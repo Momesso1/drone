@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="corridor">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="body">
+
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://corridor/meshes/corridor.dae</uri>
+              <!-- <scale>1 1 1</scale> -->
+            </mesh>
+          </geometry>
+        </visual>
+
+        <!-- hitbox -->
+        <collision name="collision">
+            <geometry>
+                <mesh>
+                    <uri>model://corridor/meshes/corridor.dae</uri>
+                </mesh>
+            </geometry>
+        </collision>
+
+      </link>
+    </model>
+</sdf>

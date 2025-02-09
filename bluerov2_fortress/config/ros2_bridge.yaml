@@ -1,0 +1,60 @@
+- ros_topic_name: "bluerov2/imu"
+  gz_topic_name: "imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/gazebo_odom"
+  gz_topic_name: "model/bluerov2_heavy/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster1_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster1_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster2_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster2_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster3_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster3_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster4_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster4_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster5_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster5_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster6_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster6_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster7_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster7_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/model/bluerov2_heavy/joint/thruster8_joint/cmd_thrust"
+  gz_topic_name: "/model/bluerov2_heavy/joint/thruster8_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+

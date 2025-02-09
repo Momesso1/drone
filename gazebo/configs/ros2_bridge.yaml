@@ -1,0 +1,4 @@
+- gz_topic_name: "/camera1/image/points"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro"  name="robot">
+
+
+    <xacro:include filename="robot_core.xacro" />
+
+    <xacro:include filename="gazebo_control.xacro" />
+
+    <xacro:include filename="depth_camera.xacro" />
+
+    <xacro:include filename="imu.xacro" />
+
+    <!-- origin is the position between chassis and realsense d435i -->
+    <!-- <xacro:include filename="_d435i.urdf.xacro"/>
+    <xacro:sensor_d435i parent="chassis" name="camera" topics_ns="camera"> 
+        <origin xyz="0.35 0.0 0.13" rpy="0.0 0.0 0.0"/>
+    </xacro:sensor_d435i> -->
+
+
+
+    <!-- Test!! -->
+
+
+    <!-- <link name="base_link" /> -->
+
+    <!-- <xacro:include filename="depth_camera.xacro" /> -->
+    <!-- <xacro:include filename="camera.xacro"/> -->
+<!-- 
+    <xacro:include filename="_d435i.urdf.xacro"/>
+    <xacro:sensor_d435i parent="base_link" name="camera" topics_ns="camera"> 
+        <origin xyz="0.0 0.0 0.13" rpy="0.0 0.0 0.0"/>
+    </xacro:sensor_d435i> -->
+
+
+
+    
+</robot>
