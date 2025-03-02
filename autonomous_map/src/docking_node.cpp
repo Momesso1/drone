@@ -24,9 +24,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include "subdrone_interfaces/msg/passar_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_arestas.hpp"
 #include "subdrone_interfaces/msg/passar_array_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_array_arestas.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cmath>
@@ -89,6 +87,13 @@ private:
     {
         return std::round(value / multiple) * multiple;
     }
+    
+    /*
+    
+        TEM QUE ATUALIZAR PARA TUPLA!!!
+    
+    
+    */
     
     std::string concatenar(double x, double y, double z) 
     {

@@ -24,9 +24,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include "subdrone_interfaces/msg/passar_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_arestas.hpp"
 #include "subdrone_interfaces/msg/passar_array_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_array_arestas.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cmath>
@@ -35,12 +33,30 @@
 
 using namespace std::chrono_literals;
 
+namespace std 
+{
+    template <>
+    struct hash<std::tuple<double, double, double>> 
+    {
+        size_t operator()(const std::tuple<double, double, double>& t) const 
+        {
+            size_t h1 = hash<double>()(std::get<0>(t));
+            size_t h2 = hash<double>()(std::get<1>(t));
+            size_t h3 = hash<double>()(std::get<2>(t));
+            
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
+        }
+    };
+}
+
 class NavigableGraph : public rclcpp::Node {
 
 private:
     struct Vertex {
         int key;
         double x, y, z;
+        bool up;
+        bool down;
     };
 
     struct ObstaclesVertices 
@@ -48,11 +64,15 @@ private:
         int key;
         double x, y, z;
         bool verified;
+        bool up;
+        bool down;
     };
 
     struct StringVertex {
-        std::string key;
+        std::tuple<double, double, double> key;
         double x, y, z;
+        bool up;
+        bool down;
     };
 
     struct VertexDijkstra {
@@ -88,7 +108,6 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_visualize_navigable_graph;
     rclcpp::Publisher<subdrone_interfaces::msg::PassarArrayVertices>::SharedPtr publisher_navigable_vertices_;
     rclcpp::Publisher<subdrone_interfaces::msg::PassarArrayVertices>::SharedPtr publisher_removed_navigable_vertices_;
-    rclcpp::Publisher<subdrone_interfaces::msg::PassarArrayArestas>::SharedPtr publisher_navigable_edges_;
 
     //Subscriptions.
     rclcpp::Subscription<subdrone_interfaces::msg::PassarArrayVertices>::SharedPtr subscription_;
@@ -113,6 +132,7 @@ private:
     double x_min_, x_max_;
     double y_min_, y_max_;
     double z_min_, z_max_; 
+    int decimals = 0;
 
     std::vector<Edge> edges_;
     std::string deleteKey;
@@ -126,110 +146,74 @@ private:
     std::unordered_map<int, int> came_from;
     std::unordered_map<std::pair<int, int>, double, pair_hash> distances;
     std::unordered_map<int, std::vector<int>> adjacency_list;
-    std::unordered_map<std::string, StringVertex> removedNavigableVertices;
-    std::unordered_map<std::string, ObstaclesVertices> fixedNavigableVerticesMap;
-    std::unordered_map<std::string, ObstaclesVertices> obstaclesVertices_;
-    std::unordered_map<std::string, Vertex> navigableVerticesMap_;
+    std::unordered_map<std::tuple<double, double, double>, StringVertex> removedNavigableVertices;
+    std::unordered_map<std::tuple<double, double, double>, ObstaclesVertices> fixedNavigableVerticesMap;
+    std::unordered_map<std::tuple<double, double, double>, ObstaclesVertices> obstaclesVertices_;
+    std::unordered_map<std::tuple<double, double, double>, Vertex> navigableVerticesMap;
     std::priority_queue<std::pair<double, int>, std::vector<std::pair<double, int>>, std::greater<>> open_set;
    
 
-    double roundToMultiple(double value, double multiple) 
-    {
-        return std::round(value / multiple) * multiple;
+    inline double roundToMultiple(double value, double multiple, int decimals) {
+        if (multiple == 0.0) return value; // Evita divisão por zero
+        
+        double result = std::round(value / multiple) * multiple;
+        double factor = std::pow(10.0, decimals);
+        result = std::round(result * factor) / factor;
+        
+        return result;
     }
     
-    std::string concatenar(double x, double y, double z) 
-    {
-        std::string t = std::to_string(std::abs(x)) + std::to_string(std::abs(y)) + std::to_string(std::abs(z));
-
-
-        int sign_x = (x >= 0) ? 0 : 1;
-        int sign_y = (y >= 0) ? 0 : 1;
-        int sign_z = (z >= 0) ? 0 : 1;
-
-        return t + std::to_string(sign_x) + std::to_string(sign_y) + std::to_string(sign_z);
+    inline double roundToMultipleFromBase(double value, double base, double multiple, int decimals) {
+        if (multiple == 0.0) return value; // Evita divisão por zero
+        
+        double result = base + std::round((value - base) / multiple) * multiple;
+        double factor = std::pow(10.0, decimals);
+        result = std::round(result * factor) / factor;
+        
+        return result;
     }
 
-     double roundToMultipleFromBase(double value, double base, double multiple) 
+    int countDecimals(double number) 
     {
-        return base + std::round((value - base) / multiple) * multiple;
-    } 
-
-    void createFixedFrames(int id_counter, bool changingResolution)
-    {
-        double offsets[10][3] = {
-        {-distanceToObstacle_, 0.0, 0.0}, {distanceToObstacle_, 0.0, 0.0},{0.0, distanceToObstacle_, 0.0}, {0.0, -distanceToObstacle_, 0.0},  {0.0, 0.0, distanceToObstacle_}, {0.0, 0.0, -distanceToObstacle_},{-distanceToObstacle_, distanceToObstacle_, 0.0},{distanceToObstacle_, distanceToObstacle_, 0.0},
-        {-distanceToObstacle_, -distanceToObstacle_, 0.0},
-        {distanceToObstacle_, -distanceToObstacle_, 0.0}
-        };
-
-      
-        for (auto it = fixedNavigableVerticesMap.begin(); it != fixedNavigableVerticesMap.end(); ++it) 
-        {  
-            if(it->second.verified == false || changingResolution == true)
-            {
-                it->second.verified = true;
-                for (int a = 0; a < 10; a++) 
-                {
-                
-                // std::cout << it->second.x << " " << it->second.y << " " << it->second.z << std::endl;
-                    double new_x = it->second.x + offsets[a][0];
-                    double new_y = it->second.y + offsets[a][1];
-                    double new_z = it->second.z + offsets[a][2];
-
-                    std::string index = concatenar(new_x, new_y, new_z);
-
-                    //std::cout << index << std::endl;
-
-                    if (fixedNavigableVerticesMap.find(index) != fixedNavigableVerticesMap.end())
-                    { 
-                        adjacency_list[fixedNavigableVerticesMap[index].key].push_back(id_counter);
-                        Edge newEdge = {fixedNavigableVerticesMap[index].key, id_counter};
-                        navigableEdges_.push_back(newEdge);
-                        StringEdge newEdge1 = {index, it->first};
-                        stringNavigableEdges_.push_back(newEdge1);
-                    } 
-                    else if(navigableVerticesMap_.find(index) != navigableVerticesMap_.end())
-                    {
-                        adjacency_list[navigableVerticesMap_[index].key].push_back(id_counter);
-                        Edge newEdge = {navigableVerticesMap_[index].key, id_counter};
-                        navigableEdges_.push_back(newEdge);
-                        StringEdge newEdge1 = {index, it->first};
-                        stringNavigableEdges_.push_back(newEdge1);
-                    }
-                }
-
-                if(navigableVerticesMap_.find(it->first) == navigableVerticesMap_.end())
-                {
-                    navigableVerticesMap_[it->first] = {id_counter, it->second.x, it->second.y, it->second.z};
-                    navigableVertices_.push_back({id_counter, it->second.x, it->second.y, it->second.z});
-                }    
-            }
-            
-            
+        // Separa a parte fracionária (trabalha com o valor absoluto)
+        double fractional = std::fabs(number - std::floor(number));
+        int decimals = 0;
+        const double epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
+    
+        // Enquanto houver parte fracionária significativa e um limite para evitar loops infinitos
+        while (fractional > epsilon && decimals < 20) {
+            fractional *= 10;
+            fractional -= std::floor(fractional);
+            decimals++;
         }
-    }  
+        return decimals;
+    }
+    
+
 
     void createGraph() 
     {   
-        navigableVerticesMap_.clear();
+        auto start_time_ = std::chrono::high_resolution_clock::now();
+        navigableVerticesMap.clear();
         navigableEdges_.clear();
         navigableVertices_.clear();
-        int id_counter = navigableVerticesMap_.size();
+        int id_counter = navigableVerticesMap.size();
         double new_x, new_y, new_z = 0.0;
 
-        for (double x = x_min_; x <= x_max_; x += distanceToObstacle_ * resolution_) {
-            for (double y = y_min_; y <= y_max_; y += distanceToObstacle_ * resolution_) {
-                for (double z = z_min_; z <= z_max_; z += distanceToObstacle_ * resolution_) {
+        for (double x = x_min_; x <= x_max_; x += distanceToObstacle_) {
+            for (double y = y_min_; y <= y_max_; y += distanceToObstacle_) {
+                for (double z = z_min_; z <= z_max_; z += distanceToObstacle_) {
                    
                     
                     //Arredondando as posições dos vértices navegáveis para ficar em posições sincronizadas com os vértices que são obstaculos.
-                    new_x = roundToMultiple(x, distanceToObstacle_ * resolution_);
-                    new_y = roundToMultiple(y, distanceToObstacle_ * resolution_);
-                    new_z = roundToMultipleFromBase(z, z_min_, distanceToObstacle_ * resolution_);    
-                    std::string index = concatenar(new_x, new_y, new_z);
+                    new_x = roundToMultiple(x, distanceToObstacle_, decimals);
+                    new_y = roundToMultiple(y, distanceToObstacle_, decimals);
+                    new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
+                    auto index = std::make_tuple(static_cast<double>(new_x), 
+                    static_cast<double>(new_y), 
+                    static_cast<double>(new_z));
                     
-                    if (obstaclesVertices_.find(index) == obstaclesVertices_.end() && navigableVerticesMap_.find(index) == navigableVerticesMap_.end())
+                    if (obstaclesVertices_.find(index) == obstaclesVertices_.end() && navigableVerticesMap.find(index) == navigableVerticesMap.end())
                     {
                         Vertex v;
                         v.key = id_counter;
@@ -238,7 +222,7 @@ private:
                         v.z = new_z;
                                             
                         navigableVertices_.push_back(v);
-                        navigableVerticesMap_[index] = v;
+                        navigableVerticesMap[index] = v;
                         
                         id_counter++;
                     }
@@ -246,44 +230,7 @@ private:
             }
         }
 
-        
-        adjustGraph();
-
-
-         double offsets1[10][3] = {
-        {-distanceToObstacle_ * resolution_, 0.0, 0.0}, {distanceToObstacle_ * resolution_, 0.0, 0.0},{0.0, distanceToObstacle_ * resolution_, 0.0}, {0.0, -distanceToObstacle_ * resolution_, 0.0},  {0.0, 0.0, distanceToObstacle_ * resolution_}, {0.0, 0.0, -distanceToObstacle_ * resolution_},{-distanceToObstacle_ * resolution_, distanceToObstacle_ * resolution_, 0.0},{distanceToObstacle_ * resolution_, distanceToObstacle_ * resolution_, 0.0},
-        {-distanceToObstacle_ * resolution_, -distanceToObstacle_ * resolution_, 0.0},
-        {distanceToObstacle_ * resolution_, -distanceToObstacle_ * resolution_, 0.0}
-        };
-
-      
-        for (auto it = navigableVerticesMap_.begin(); it != navigableVerticesMap_.end(); ++it) 
-        {  
-            for (int a = 0; a < 10; a++) 
-            {
-               // std::cout << it->second.x << " " << it->second.y << " " << it->second.z << std::endl;
-                double new_x = it->second.x + offsets1[a][0];
-                double new_y = it->second.y + offsets1[a][1];
-                double new_z = it->second.z + offsets1[a][2];
-
-                std::string index = concatenar(new_x, new_y, new_z);
-
-                //std::cout << index << std::endl;
-
-                if (navigableVerticesMap_.find(index) != navigableVerticesMap_.end())
-                { 
-                    adjacency_list[navigableVerticesMap_[index].key].push_back(it->second.key);
-                    Edge newEdge = {navigableVerticesMap_[index].key, it->second.key};
-                    navigableEdges_.push_back(newEdge);
-                    StringEdge newEdge1 = {index, it->first};
-                    stringNavigableEdges_.push_back(newEdge1);
-                }        
-            }
-        }
-
-
-        
-        //RCLCPP_INFO(this->get_logger(), "Graph created with %zu vertices", navigableVertices_.size());
+    
     }
 
     void adjustGraph()
@@ -298,29 +245,27 @@ private:
 
             if(_.verified == false)
             {
-                 if (navigableVerticesMap_.find(key) != navigableVerticesMap_.end()) 
+                 if (navigableVerticesMap.find(key) != navigableVerticesMap.end()) 
                 {
-                    adjacency_list.erase(navigableVerticesMap_[key].key);
-                    navigableVertices_[navigableVerticesMap_[key].key] = navigableVertices_.back();
+                    navigableVertices_[navigableVerticesMap[key].key] = navigableVertices_.back();
                     navigableVertices_.pop_back();
                     
-                    navigableVerticesMap_.erase(key);
-                    removedNavigableVertices[key] = {key, _.x, _.y, _.z};
+                    navigableVerticesMap.erase(key);
+                    removedNavigableVertices[key] = {key, _.x, _.y, _.z, _.up, _.down};
                     
                     //apague o indice key de adjancy list aqui
                 }
                 else if(fixedNavigableVerticesMap.find(key) != fixedNavigableVerticesMap.end())
                 {
-                    adjacency_list.erase(fixedNavigableVerticesMap[key].key);
-                    if(navigableVerticesMap_.find(key) != navigableVerticesMap_.end()) 
+                    if(navigableVerticesMap.find(key) != navigableVerticesMap.end()) 
                     {
-                        navigableVertices_[navigableVerticesMap_[key].key] = navigableVertices_.back();
+                        navigableVertices_[navigableVerticesMap[key].key] = navigableVertices_.back();
                         navigableVertices_.pop_back();
-                        navigableVerticesMap_.erase(key);
+                        navigableVerticesMap.erase(key);
                     }
 
                     fixedNavigableVerticesMap.erase(key);
-                    removedNavigableVertices[key] = {key, _.x, _.y, _.z};
+                    removedNavigableVertices[key] = {key, _.x, _.y, _.z, _.up, _.down};
                 }
 
 
@@ -335,7 +280,7 @@ private:
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end_time - start_time_;
 
-        publish_visualize_navigable_vertices();
+      
     }
 
    
@@ -345,122 +290,76 @@ private:
 
     */
 
-    void publish_visualize_navigable_vertices()
-    {
-        auto start_time_ = std::chrono::high_resolution_clock::now();
-        sensor_msgs::msg::PointCloud2 cloud_msg1;
-        cloud_msg1.header.stamp = this->get_clock()->now();
-        cloud_msg1.header.frame_id = "map";
+    // void publish_visualize_navigable_vertices()
+    // {
+    //     auto start_time_ = std::chrono::high_resolution_clock::now();
+    //     sensor_msgs::msg::PointCloud2 cloud_msg1;
+    //     cloud_msg1.header.stamp = this->get_clock()->now();
+    //     cloud_msg1.header.frame_id = "map";
 
-        // Configuração dos campos do PointCloud2
-        cloud_msg1.height = 1;  // Ponto único em cada linha
-        cloud_msg1.width = navigableVerticesMap_.size(); // Quantidade de vértices
-        cloud_msg1.is_dense = true;
-        cloud_msg1.is_bigendian = false;
-        cloud_msg1.point_step = 3 * sizeof(float); // x, y, z
-        cloud_msg1.row_step = cloud_msg1.point_step * cloud_msg1.width;
+    //     // Configuração dos campos do PointCloud2
+    //     cloud_msg1.height = 1;  // Ponto único em cada linha
+    //     cloud_msg1.width = navigableVerticesMap.size(); // Quantidade de vértices
+    //     cloud_msg1.is_dense = true;
+    //     cloud_msg1.is_bigendian = false;
+    //     cloud_msg1.point_step = 3 * sizeof(float); // x, y, z
+    //     cloud_msg1.row_step = cloud_msg1.point_step * cloud_msg1.width;
 
-        // Adicionar campos de x, y, z
-        sensor_msgs::PointCloud2Modifier modifier(cloud_msg1);
-        modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(cloud_msg1.width);
+    //     // Adicionar campos de x, y, z
+    //     sensor_msgs::PointCloud2Modifier modifier(cloud_msg1);
+    //     modifier.setPointCloud2FieldsByString(1, "xyz");
+    //     modifier.resize(cloud_msg1.width);
 
-        // Preencher os dados do PointCloud2
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg1, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg1, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg1, "z");
+    //     // Preencher os dados do PointCloud2
+    //     sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg1, "x");
+    //     sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg1, "y");
+    //     sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg1, "z");
 
-        for (const auto& [key, vertex] : navigableVerticesMap_) 
-        {
+    //     for (const auto& [key, vertex] : navigableVerticesMap) 
+    //     {
                 
-            *iter_x = vertex.x;  // Access the x coordinate of the current Vertex
-            *iter_y = vertex.y;  // Access the y coordinate of the current Vertex
-            *iter_z = vertex.z;  // Access the z coordinate of the current Vertex
+    //         *iter_x = vertex.x;  // Access the x coordinate of the current Vertex
+    //         *iter_y = vertex.y;  // Access the y coordinate of the current Vertex
+    //         *iter_z = vertex.z;  // Access the z coordinate of the current Vertex
 
-            ++iter_x;
-            ++iter_y;
-            ++iter_z;
+    //         ++iter_x;
+    //         ++iter_y;
+    //         ++iter_z;
             
  
-        }
-        publisher_visualize_navigable_graph->publish(cloud_msg1);
+    //     }
+    //     publisher_visualize_navigable_graph->publish(cloud_msg1);
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time_;
-    }
+    //     auto end_time = std::chrono::high_resolution_clock::now();
+    //     std::chrono::duration<double> duration = end_time - start_time_;
+    // }
 
 
     void publish_removed_navigable_vertices()
-    {
+    { 
         subdrone_interfaces::msg::PassarArrayVertices removedVerticesMessage;
-        
-        
+        //size_t contador = 0;
         for (const auto& [key, vertex] : removedNavigableVertices) 
         {
+            
+
             subdrone_interfaces::msg::PassarVertices vertex_msg;
-            vertex_msg.key = key;  // Certifique-se de que o tipo de 'key' seja compatível.
+            vertex_msg.up = vertex.up;
+            vertex_msg.down = vertex.down;
             vertex_msg.x   = vertex.x;
             vertex_msg.y   = vertex.y;
             vertex_msg.z   = vertex.z;
-            
-            removedVerticesMessage.data.push_back(vertex_msg);
+
+            removedVerticesMessage.data.push_back(vertex_msg);  
+            //contador++;
         }
+
+       // std::cout << contador << std::endl;
 
         
         publisher_removed_navigable_vertices_->publish(removedVerticesMessage);
     }
 
-
-
-    void publish_navigable_vertices()
-    {
-        if(vertices_enviados == 0)
-        {
-            subdrone_interfaces::msg::PassarArrayVertices verticesMessage;
-
-            for (const auto& [key, vertex] : navigableVerticesMap_) 
-            {
-                subdrone_interfaces::msg::PassarVertices Vertex;
-                Vertex.key = key;
-                Vertex.x = vertex.x;
-                Vertex.y = vertex.y;
-                Vertex.z = vertex.z;
-
-
-                verticesMessage.data.push_back(Vertex);
-            }
-
-            
-            publisher_navigable_vertices_->publish(verticesMessage);
-            vertices_enviados = 1;
-
-        }
-        
-    }
-
-        
-    void publish_navigable_edges()
-    {
-        if(enviados == 0)
-        {
-            subdrone_interfaces::msg::PassarArrayArestas edgesMessage;
-            edgesMessage.data.reserve(stringNavigableEdges_.size());
-            
-            for (const auto& edge : stringNavigableEdges_) 
-            {
-                subdrone_interfaces::msg::PassarArestas edge_msg;
-                edge_msg.v1 = edge.v1;
-                edge_msg.v2 = edge.v2;
-                
-                edgesMessage.data.push_back(edge_msg);
-            }
-            
-            publisher_navigable_edges_->publish(edgesMessage);
-            enviados = 1;
-        }
-        
-        
-    }
 
 
     /*
@@ -474,20 +373,22 @@ private:
     void callback_obstacles(const subdrone_interfaces::msg::PassarArrayVertices::SharedPtr msg)
     {
         
-       auto start_time_ = std::chrono::high_resolution_clock::now();
-        
+ 
 
         size_t i = 0;
         for (const auto& vertex : msg->data) 
         {
+            auto index = std::make_tuple(vertex.x, vertex.y, vertex.z);
             ObstaclesVertices vertexObstacles;
-            vertexObstacles.key = i;  // Aqui, 'key' é do mesmo tipo (std::string)
+            vertexObstacles.key = i;  
+            vertexObstacles.up = vertex.up;
+            vertexObstacles.down = vertex.down;
             vertexObstacles.x = vertex.x;
             vertexObstacles.y = vertex.y;
             vertexObstacles.z = vertex.z;
             vertexObstacles.verified = false;
             
-            obstaclesVertices_.emplace(vertex.key, vertexObstacles);
+            obstaclesVertices_.emplace(index, vertexObstacles);
             i++;
         }
 
@@ -496,10 +397,7 @@ private:
         
         
         adjustGraph();
-        
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time_;
-        //RCLCPP_INFO(this->get_logger(), "GRAFO CRIADO EM: %f", duration.count());
+    
     }
    
 
@@ -508,47 +406,47 @@ private:
         size_t i = 0;
         for (const auto& vertex : msg->data) 
         {  
-            
-                 if(obstaclesVertices_.find(vertex.key) == obstaclesVertices_.end())
-                {
-                    ObstaclesVertices fixedVertex;
-                    fixedVertex.key = i;  // ou std::stoi(vertex.key) se necessário
-                    fixedVertex.x   = vertex.x;
-                    fixedVertex.y   = vertex.y;
-                    fixedVertex.z   = vertex.z;
-                    fixedVertex.verified = false;
-                    fixedNavigableVerticesMap.emplace(vertex.key, fixedVertex);
-                }
-                else
-                {
-                    fixedNavigableVerticesMap.erase(vertex.key);
-                }
-            
+            auto index = std::make_tuple(vertex.x, vertex.y, vertex.z);
+            if(obstaclesVertices_.find(index) == obstaclesVertices_.end())
+            {
+                ObstaclesVertices fixedVertex;
+                fixedVertex.key = i;  // ou std::stoi(index) se necessário
+                fixedVertex.x   = vertex.x;
+                fixedVertex.y   = vertex.y;
+                fixedVertex.z   = vertex.z;
+                fixedVertex.verified = false;
+                fixedNavigableVerticesMap.emplace(index, fixedVertex);
+            }
+            else
+            {
+                fixedNavigableVerticesMap.erase(index);
+            }
+        
 
-                i++;
-            
-     
+            i++;
+        
+    
            
         }
 
         
-        createFixedFrames(navigableVerticesMap_.size() + 1, false);
+        
         adjustGraph();
     }
 
     void check_parameters()
     {
-      
-        auto new_distanceToObstacle = this->get_parameter("distanceToObstacle").get_parameter_value().get<double>();
+        // Obtendo parâmetros como double e convertendo para double
+        auto new_distanceToObstacle = static_cast<double>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
+        auto new_x_min = static_cast<double>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        auto new_x_max = static_cast<double>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        auto new_y_min = static_cast<double>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        auto new_y_max = static_cast<double>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        auto new_z_min = static_cast<double>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        auto new_z_max = static_cast<double>(this->get_parameter("z_max").get_parameter_value().get<double>());
+
         auto new_resolution = this->get_parameter("resolution").get_parameter_value().get<int>();
-        auto new_x_min = this->get_parameter("x_min").get_parameter_value().get<double>();
-        auto new_x_max = this->get_parameter("x_max").get_parameter_value().get<double>();
-        auto new_y_min = this->get_parameter("y_min").get_parameter_value().get<double>();
-        auto new_y_max = this->get_parameter("y_max").get_parameter_value().get<double>();
-        auto new_z_min = this->get_parameter("z_min").get_parameter_value().get<double>();
-        auto new_z_max = this->get_parameter("z_max").get_parameter_value().get<double>();
-        
-        
+
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
@@ -558,32 +456,29 @@ private:
             RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");
             createGraph();           
         }
-        else if(new_resolution != temp_)
+        else if (new_resolution != temp_)
         {   
             temp_ = new_resolution;
-
             std::cout << "\n" << std::endl;
 
-            if(new_resolution <= -1)
+            if (new_resolution <= -1)
             {
-                resolution_ =  std::abs(1.0  / new_resolution);
+                resolution_ = std::abs(1.0 / new_resolution);
                 RCLCPP_INFO(this->get_logger(), "Updated resolution: %ld", new_resolution);
                 createGraph();
             }
-            else if(new_resolution == 0)
+            else if (new_resolution == 0)
             {
                 RCLCPP_WARN(this->get_logger(), "Resolution cannot be 0.");
             }
             else
             {
                 resolution_ = new_resolution;
-                RCLCPP_INFO(this->get_logger(), "Updated resolution: %0.f", resolution_);
+                RCLCPP_INFO(this->get_logger(), "Updated resolution: %f", resolution_);
                 createGraph();
-                createFixedFrames(navigableVerticesMap_.size() + 1, true);
-             }
-          
-          
+            }
         }
+
         if (new_x_min != x_min_) 
         {
             std::cout << "\n" << std::endl;
@@ -608,7 +503,7 @@ private:
         if (new_y_max != y_max_) 
         {
             std::cout << "\n" << std::endl;
-           y_max_ = new_y_max;
+            y_max_ = new_y_max;
             RCLCPP_INFO(this->get_logger(), "Updated y_max: %.2f", y_max_);
             createGraph();
         }        
@@ -626,9 +521,8 @@ private:
             RCLCPP_INFO(this->get_logger(), "Updated z_max: %.2f", z_max_);
             createGraph();
         }
-
-      
     }
+
 
 public:
     NavigableGraph()
@@ -644,15 +538,15 @@ public:
         this->declare_parameter<double>("z_min", 0.2);
         this->declare_parameter<double>("z_max", 0.2);
 
-        // Initialize parameters
-        distanceToObstacle_ = this->get_parameter("distanceToObstacle").get_parameter_value().get<double>();
+        // Initialize parameters as double usando static_cast
+        distanceToObstacle_ = static_cast<double>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         resolution_ = this->get_parameter("resolution").get_parameter_value().get<int>();
-        x_min_ = this->get_parameter("x_min").get_parameter_value().get<double>();
-        x_max_ = this->get_parameter("x_max").get_parameter_value().get<double>();
-        y_min_ = this->get_parameter("y_min").get_parameter_value().get<double>();
-        y_max_ = this->get_parameter("y_max").get_parameter_value().get<double>();
-        z_min_ = this->get_parameter("z_min").get_parameter_value().get<double>();
-        z_max_ = this->get_parameter("z_max").get_parameter_value().get<double>();
+        x_min_ = static_cast<double>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        x_max_ = static_cast<double>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        y_min_ = static_cast<double>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        y_max_ = static_cast<double>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        z_min_ = static_cast<double>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        z_max_ = static_cast<double>(this->get_parameter("z_max").get_parameter_value().get<double>());
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Resolution is set to: %0.f", resolution_);
@@ -663,10 +557,12 @@ public:
         RCLCPP_INFO(this->get_logger(), "Updated z_min: %f", z_min_);
         RCLCPP_INFO(this->get_logger(), "Updated z_max: %f", z_max_);
 
-
+       
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(1),
             std::bind(&NavigableGraph::check_parameters, this));
+
+        decimals = countDecimals(distanceToObstacle_);
 
        subscription_ = this->create_subscription<subdrone_interfaces::msg::PassarArrayVertices>(
             "/vertices", 10, std::bind(&NavigableGraph::callback_obstacles, this, std::placeholders::_1));
@@ -674,22 +570,13 @@ public:
         subscription_fixed_vertices = this->create_subscription<subdrone_interfaces::msg::PassarArrayVertices>(
             "/fixed_vertices", 10, std::bind(&NavigableGraph::callback_fixed_vertices, this, std::placeholders::_1));
 
-
-
-        publisher_visualize_navigable_graph = this->create_publisher<sensor_msgs::msg::PointCloud2>("/visualize_navigable_vertices", 10);
-        timer_visualize_navigable_graph = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_visualize_navigable_vertices, this));
-
-        publisher_navigable_vertices_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/navigable_vertices", 10);
-        timer_navigable_vertices = this->create_wall_timer(50ms, std::bind(&NavigableGraph::publish_navigable_vertices, this));
+        // publisher_visualize_navigable_graph = this->create_publisher<sensor_msgs::msg::PointCloud2>("/visualize_navigable_vertices", 10);
+        // timer_visualize_navigable_graph = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_visualize_navigable_vertices, this));
 
         publisher_removed_navigable_vertices_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/removed_navigable_vertices", 10);
         timer_removed_navigable_vertices = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_removed_navigable_vertices, this));
 
 
-        publisher_navigable_edges_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayArestas>("/navigable_edges", 10);
-        timer_navigable_edges = this->create_wall_timer(50ms, std::bind(&NavigableGraph::publish_navigable_edges, this));
-      
-     
 
         createGraph();
     }
@@ -703,6 +590,4 @@ int main(int argc, char **argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-
 

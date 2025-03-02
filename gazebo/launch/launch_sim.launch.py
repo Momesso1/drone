@@ -38,6 +38,7 @@ def generate_launch_description():
     pkg_path = os.path.join(get_package_share_directory(package_name))
     xacro_file = os.path.join(pkg_path,'description','robot.urdf.xacro')
     
+    
 
     robot_description_config = Command([
         'xacro ', xacro_file

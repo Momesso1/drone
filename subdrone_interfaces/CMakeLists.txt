@@ -12,10 +12,9 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PassarVertices.msg"
-  "msg/PassarArestas.msg"
   "msg/PassarArrayVertices.msg"
-  "msg/PassarArrayArestas.msg"
-  
+  "msg/FixedVertices.msg"
+  "msg/FixedVerticesArray.msg"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

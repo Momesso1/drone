@@ -24,6 +24,7 @@ if(BUILD_TESTING)
       description
       configs
       map
+      rviz
       
   DESTINATION share/${PROJECT_NAME}
 )

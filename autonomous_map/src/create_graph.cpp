@@ -18,9 +18,9 @@
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include "subdrone_interfaces/msg/passar_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_arestas.hpp"
 #include "subdrone_interfaces/msg/passar_array_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_array_arestas.hpp"
+#include <cmath>
+#include <limits>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cmath>
@@ -28,7 +28,26 @@
 
 using namespace std::chrono_literals;
 
+namespace std {
+    template <>
+    struct hash<std::tuple<double, double>> {
+        size_t operator()(const std::tuple<double, double>& t) const {
+            size_t h1 = hash<double>()(std::get<0>(t));
+            size_t h2 = hash<double>()(std::get<1>(t));
+            return h1 ^ (h2 << 1);  // Combine the hashes
+        }
+    };
 
+    template <>
+    struct hash<std::tuple<double, double, double>> {
+        size_t operator()(const std::tuple<double, double, double>& t) const {
+            size_t h1 = hash<double>()(std::get<0>(t));
+            size_t h2 = hash<double>()(std::get<1>(t));
+            size_t h3 = hash<double>()(std::get<2>(t));
+            return h1 ^ (h2 << 1) ^ (h3 << 2);  // Combine the hashes
+        }
+    };
+}
 
 
 class GraphPublisher : public rclcpp::Node {
@@ -36,43 +55,43 @@ class GraphPublisher : public rclcpp::Node {
 private:
     struct Vertex 
     {
-        std::string key;
+        std::tuple<double, double, double> key;
         double x, y, z;
-        std::unordered_map<std::string, std::string> linkedCloudMapPoints;
+        bool up;
+        bool down;
     };
 
     struct VertexPointCloud 
     {
-        float x, y, z;
+        double x, y, z;
     };
 
     struct CloudMapPoint
     {
-        std::string key;
-        float x, y, z;
+        std::tuple<double, double, double> key;
+        double x, y, z;
         bool verified;
-        bool higher;
-        std::unordered_map<std::string, std::string> linkedArbitraryVertices;
+        bool artificial;
+        bool up;
+        bool down;
     };
 
-    struct CloudMapHigher
+    struct CloudMapHigherLower
     {
-        std::string higher;
-        float z;
+        std::tuple<double, double, double> key;
+        double z;
     };
 
     struct Edge 
     {
         std::string v1, v2;
     };
-
-        
     
     // Subscribers
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription1_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription2_;
-    
-    //timers
+
+     // Timers
     rclcpp::TimerBase::SharedPtr timer_point_cloud_;
     rclcpp::TimerBase::SharedPtr timer_vertices_arbitrary;
     rclcpp::TimerBase::SharedPtr timer_vertices_arbitrary121_;
@@ -95,50 +114,52 @@ private:
     double fixedNavigableVertices_;
     double maxSecurityDistance_;
     double distanceToObstacle_;
-    double maxHeightSecurityDistance_;
+    double maxSecurityHeightDistance_;
     bool fixedFrames_;
+    int decimals = 0;
 
-    std::unordered_map<std::string, CloudMapHigher> higherCloudMapPointXY;
-    std::unordered_map<std::string, Vertex> publishedFixedVertices;
-    std::unordered_map<std::string, Vertex> fixedVertices;
-    std::unordered_map<std::string, Vertex> publishedVerticesArbitrary;
-    std::unordered_map<std::string, Vertex> verticesArbitrary;
-    std::unordered_map<std::string, CloudMapPoint> verticesCloudMap;
-    std::unordered_map<std::string, CloudMapPoint> receivedCloudMap;
+    std::unordered_map<std::tuple<double, double>, CloudMapHigherLower> lowerCloudMapPointXY;
+    std::unordered_map<std::tuple<double, double>, CloudMapHigherLower> higherCloudMapPointXY;
+    std::unordered_map<std::tuple<double, double, double>, Vertex> publishedFixedVertices;
+    std::unordered_map<std::tuple<double, double, double>, Vertex> fixedVertices;
+    std::unordered_map<std::tuple<double, double, double>, Vertex> publishedVerticesArbitrary;
+    std::unordered_map<std::tuple<double, double, double>, Vertex> verticesArbitrary;
+    std::unordered_map<std::tuple<double, double, double>, CloudMapPoint> verticesCloudMap;
+    std::unordered_map<std::tuple<double, double, double>, CloudMapPoint> receivedCloudMap;
 
-    float roundToDecimal(float value, int decimal_places) 
+    double roundToDecimal(double value, int decimal_places) 
     {
-        float factor = std::pow(10, decimal_places);
+        double factor = std::pow(10, decimal_places);
         return std::round(value * factor) / factor;
     }
 
-    double roundToMultiple(double value, double multiple) 
-    {
-        return std::round(value / multiple) * multiple;
+    inline double roundToMultiple(double value, double multiple, int decimals) {
+        if (multiple == 0.0) return value; // Evita divisão por zero
+        
+        double result = std::round(value / multiple) * multiple;
+        double factor = std::pow(10.0, decimals);
+        result = std::round(result * factor) / factor;
+        
+        return result;
     }
 
-    std::string concatenar(double x, double y, double z) 
+    int countDecimals(double number) 
     {
-        std::string t = std::to_string(std::abs(x)) + std::to_string(std::abs(y)) + std::to_string(std::abs(z));
-
-
-        int sign_x = (x >= 0) ? 0 : 1;
-        int sign_y = (y >= 0) ? 0 : 1;
-        int sign_z = (z >= 0) ? 0 : 1;
-
-        return t + std::to_string(sign_x) + std::to_string(sign_y) + std::to_string(sign_z);
+        // Separa a parte fracionária (trabalha com o valor absoluto)
+        double fractional = std::fabs(number - std::floor(number));
+        int decimals = 0;
+        const double epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
+    
+        // Enquanto houver parte fracionária significativa e um limite para evitar loops infinitos
+        while (fractional > epsilon && decimals < 20) {
+            fractional *= 10;
+            fractional -= std::floor(fractional);
+            decimals++;
+        }
+        return decimals;
     }
-
-    std::string concatenarXY(float x, float y) 
-    {
-        std::string t = std::to_string(std::abs(x)) + std::to_string(std::abs(y));
-
-        int sign_x = (x >= 0) ? 0 : 1;
-        int sign_y = (y >= 0) ? 0 : 1;
-
-        return t + std::to_string(sign_x) + std::to_string(sign_y);
-    }
-
+    
+  
 
 
     void createGraphFromPointCloud() 
@@ -154,10 +175,10 @@ private:
                 double toma = 0.0, maxToma = 0.0;
                 int opa = 0, opa2 = 0;
                 double new_x, new_y, new_z = 0.0;
-                std::string index, index1, index2, index3, index4, index5, index6, index7, index8, index9;
-                if(maxHeightSecurityDistance_ >= maxSecurityDistance_ + fixedNavigableVertices_)
+        
+                if(maxSecurityHeightDistance_ >= maxSecurityDistance_ + fixedNavigableVertices_)
                 {
-                    maxToma = maxHeightSecurityDistance_;
+                    maxToma = maxSecurityHeightDistance_;
                 }
                 else
                 {
@@ -166,19 +187,40 @@ private:
 
                 while(toma <= maxToma)
                 {
-                    if(toma <= maxHeightSecurityDistance_ && it->second.higher == true)
+                    if(toma <= maxSecurityHeightDistance_ && it->second.artificial == false)
                     {
                             
-                        new_x = roundToMultiple(it->second.x, distanceToObstacle_);
-                        new_y = roundToMultiple(it->second.y, distanceToObstacle_);
-                        new_z = roundToMultiple(it->second.z + toma, distanceToObstacle_);
-                        index5 = concatenar(new_x, new_y, new_z);
+                        new_x = roundToMultiple(it->second.x, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(it->second.y, distanceToObstacle_, decimals);
+                        new_z = roundToMultiple(it->second.z + toma, distanceToObstacle_, decimals);
+                        auto index5 = std::make_tuple(new_x, new_y, new_z);
 
-                        if (verticesCloudMap.find(index5) == verticesCloudMap.end())
+                        if ( maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end() )
                         {
-                            verticesCloudMap[index5] = {index5, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, false, {}};
+                            verticesCloudMap[index5] = {index5, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, false};
+                        }
+                        else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end())
+                        {
+                            verticesCloudMap[index5] = {index5, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, true, false};
                         }
                             
+                    }
+
+                    if(toma <= maxSecurityHeightDistance_ && it->second.artificial == false)
+                    {
+                        new_x = roundToMultiple(it->second.x, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(it->second.y, distanceToObstacle_, decimals);
+                        new_z = roundToMultiple(it->second.z - toma, distanceToObstacle_, decimals);
+                        auto index6 = std::make_tuple(new_x, new_y, new_z);
+
+                        if (maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
+                        {
+                            verticesCloudMap[index6] = {index6, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, false};
+                        }
+                        else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
+                        {
+                            verticesCloudMap[index6] = {index6, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, true};
+                        }
                     }
 
                     if(toma <= maxSecurityDistance_)
@@ -186,28 +228,44 @@ private:
                         
 
                         for(int eita = 0; eita <= opa * 2; eita++)
-                        {         
-                            std::string index10 = concatenar((it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z);
-                            std::string index11 = concatenar((it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z);
+                        {   
+                            auto index10 = std::make_tuple((it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z);
+                            auto index11 = std::make_tuple((it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z);
 
-                            std::string index12 = concatenar((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z);
-                            std::string index13 = concatenar((it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z);
+                            auto index12 = std::make_tuple((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z);
+                            auto index13 = std::make_tuple((it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z);
                             
-                            verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, {}};
-                            verticesArbitrary[index10].linkedCloudMapPoints[it->second.key] = it->second.key;
-                            it->second.linkedArbitraryVertices[index10] = index10;
+                            if(it->second.artificial == true && it->second.up == true)
+                            {
+                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, true, false};
 
-                            verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, {}};
-                            verticesArbitrary[index11].linkedCloudMapPoints[it->second.key] = it->second.key;
-                            it->second.linkedArbitraryVertices[index11] = index11;
+                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, true, false};
 
-                            verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, {}};
-                            verticesArbitrary[index12].linkedCloudMapPoints[it->second.key] = it->second.key;
-                            it->second.linkedArbitraryVertices[index12] = index12;
+                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, true, false};
 
-                            verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, {}};
-                            verticesArbitrary[index13].linkedCloudMapPoints[it->second.key] = it->second.key;
-                            it->second.linkedArbitraryVertices[index13] = index13;
+                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, true, false};
+                            }
+                            else if(it->second.artificial == true && it->second.down == false)
+                            {
+                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, false, true};
+
+                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, false, true};
+
+                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, false, true};
+
+                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, false, true};
+                            }
+                            else
+                            {
+                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, false, false};
+
+                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, false, false};
+
+                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, false, false};
+
+                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, false, false};
+                            }
+                            
                         }
 
                         opa++;
@@ -219,17 +277,17 @@ private:
 
                         for(int eita2 = 0; eita2 <= (opa2 * 2) + (opa * 2); eita2++)
                         {         
-                            std::string index10 = concatenar((it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z);
-                            std::string index11 = concatenar((it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z);
+                            auto index10 = std::make_tuple((it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z);
+                            auto index11 = std::make_tuple((it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z);
 
-                            std::string index12 = concatenar((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z);
-                            std::string index13 = concatenar((it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z);
+                            auto index12 = std::make_tuple((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z);
+                            auto index13 = std::make_tuple((it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z);
 
-                            fixedVertices[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z, {}};
-                            fixedVertices[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z, {}};
+                            fixedVertices[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z, false, false};
+                            fixedVertices[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z, false, false};
                             
-                            fixedVertices[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z, {}};           
-                            fixedVertices[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z, {}};
+                            fixedVertices[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z, false, false};           
+                            fixedVertices[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z, false, false};
                         }
 
                         opa2++;
@@ -249,7 +307,7 @@ private:
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end_time - start_time_;
-        //RCLCPP_INFO(this->get_logger(), "Tempo para criar o grafo de obstaculos: %.6lf", duration.count());
+        RCLCPP_INFO(this->get_logger(), "Tempo para criar o grafo de obstaculos: %.6lf", duration.count());
     }
 
     /*
@@ -312,10 +370,11 @@ private:
             
                 Vertex vertex1;
                 subdrone_interfaces::msg::PassarVertices Vertex;
-                Vertex.key = vertex.key;
-                Vertex.x = vertex.x;
-                Vertex.y = vertex.y;
-                Vertex.z = vertex.z;
+                Vertex.up = vertex.up;
+                Vertex.down = vertex.down;
+                Vertex.x = roundToMultiple(static_cast<double>(vertex.x), distanceToObstacle_, decimals);
+                Vertex.y = roundToMultiple(static_cast<double>(vertex.y), distanceToObstacle_, decimals);
+                Vertex.z = roundToMultiple(static_cast<double>(vertex.z), distanceToObstacle_, decimals);
 
                 vertex1.key = vertex.key;
                 vertex1.x = vertex.x;
@@ -345,39 +404,19 @@ private:
         {
             for (const auto& [key, vertex] : fixedVertices) 
             {
-                // if(publishedFixedVertices.find(key) == publishedFixedVertices.end())
-                // {
-                //     Vertex Vertex1;
-                //     subdrone_interfaces::msg::PassarVertices Vertex;
-                //     Vertex.key = vertex.key;
-                //     Vertex.x = vertex.x;
-                //     Vertex.y = vertex.y;
-                //     Vertex.z = vertex.z;
-                    
-                //     Vertex1.key = vertex.key;
-                //     Vertex1.x = vertex.x;
-                //     Vertex1.y = vertex.y;
-                //     Vertex1.z = vertex.z;
-
-                //     verticesMessage1.data.push_back(Vertex);
-                //     publishedFixedVertices[vertex.key] = (Vertex1);
-          
-                // }
-
                 Vertex Vertex1;
-                    subdrone_interfaces::msg::PassarVertices Vertex;
-                    Vertex.key = vertex.key;
-                    Vertex.x = vertex.x;
-                    Vertex.y = vertex.y;
-                    Vertex.z = vertex.z;
-                    
-                    Vertex1.key = vertex.key;
-                    Vertex1.x = vertex.x;
-                    Vertex1.y = vertex.y;
-                    Vertex1.z = vertex.z;
+                subdrone_interfaces::msg::PassarVertices Vertex;
+                Vertex.x = vertex.x;
+                Vertex.y = vertex.y;
+                Vertex.z = vertex.z;
+                
+                Vertex1.key = vertex.key;
+                Vertex1.x = vertex.x;
+                Vertex1.y = vertex.y;
+                Vertex1.z = vertex.z;
 
-                    verticesMessage1.data.push_back(Vertex);
-                    publishedFixedVertices[vertex.key] = (Vertex1);
+                verticesMessage1.data.push_back(Vertex);
+                publishedFixedVertices[vertex.key] = (Vertex1);
                     
                    
             }
@@ -387,45 +426,6 @@ private:
         publisher_fixed_vertices->publish(verticesMessage1);
     }
 
-    void publish_received_cloud_map()
-    {
-        sensor_msgs::msg::PointCloud2 cloud_msgs2;
-        cloud_msgs2.header.stamp = this->get_clock()->now();
-        cloud_msgs2.header.frame_id = "map";
-
-        // Configuração dos campos do PointCloud2
-        cloud_msgs2.height = 1;  // Ponto único em cada linha
-        cloud_msgs2.width = receivedCloudMap.size(); // Quantidade de vértices
-        cloud_msgs2.is_dense = true;
-        cloud_msgs2.is_bigendian = false;
-        cloud_msgs2.point_step = 3 * sizeof(float); // x, y, z
-        cloud_msgs2.row_step = cloud_msgs2.point_step * cloud_msgs2.width;
-
-        // Adicionar campos de x, y, z
-        sensor_msgs::PointCloud2Modifier modifier(cloud_msgs2);
-        modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(cloud_msgs2.width);
-
-        // Preencher os dados do PointCloud2
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msgs2, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msgs2, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msgs2, "z");
-        for (const auto& [key, vertex] : receivedCloudMap) {
-           
-                *iter_x = vertex.x;
-                *iter_y = vertex.y;
-                *iter_z = vertex.z;
-
-                ++iter_x;
-                ++iter_y;
-                ++iter_z;
-   
-            
-        }
-
-
-         publisher121_->publish(cloud_msgs2);
-    }
 
 
 
@@ -449,57 +449,42 @@ private:
         // Converter PointCloud2 para pcl::PointCloud<pcl::PointXYZ>
         pcl::PointCloud<pcl::PointXYZ> pcl_cloud;
         pcl::fromROSMsg(*msg, pcl_cloud);
-        std::string index1, index2;
-
+       
         for (const auto& point : pcl_cloud.points) 
         {
         
-            float x1 = roundToMultiple(point.x, distanceToObstacle_);
-            float y1 = roundToMultiple(point.y, distanceToObstacle_);
-            float z1 = roundToMultiple(point.z, distanceToObstacle_);
+            double x1 = roundToMultiple(static_cast<double>(point.x), distanceToObstacle_, decimals);
+            double y1 = roundToMultiple(static_cast<double>(point.y), distanceToObstacle_, decimals);
+            double z1 = roundToMultiple(static_cast<double>(point.z), distanceToObstacle_, decimals);
 
-
-            index1 = concatenar(x1, y1, z1);
-            index2 = concatenarXY(x1, y1);            
+            auto index1 = std::make_tuple(x1, y1, z1);
 
             if(verticesCloudMap.find(index1) == verticesCloudMap.end())
             {
-                if(higherCloudMapPointXY.find(index2) == higherCloudMapPointXY.end())
-                {
-                    higherCloudMapPointXY[index2] = {index1, z1};
-                    CloudMapPoint newCloudMap = {index1, x1, y1, z1, false, true, {}};
-                    verticesCloudMap[index1] = (newCloudMap);
-                }
-                else if(z1 > higherCloudMapPointXY[index2].z)
-                {
-                    verticesCloudMap[higherCloudMapPointXY[index2].higher].higher = false;
-                    higherCloudMapPointXY[index2] = {index1, z1};
-                    CloudMapPoint newCloudMap = {index1, x1, y1, z1, false, true, {}};
-                    verticesCloudMap[index1] = (newCloudMap);
-                }
-                
+                verticesCloudMap[index1] = {index1, x1, y1, z1, false, false, false, false};
+                verticesArbitrary[index1] = {index1, x1, y1 ,z1, false, false};
             }
-
-            receivedCloudMap[index1] = {index1, x1, y1, z1, false, false, {}};
-            verticesArbitrary[index1] = {index1, x1, y1 ,z1, {}};
+            
+            if(verticesCloudMap[index1].artificial == true)
+            {
                 
-                
-        } 
-
-        // std::cout << "verticesCloudMap: " << verticesCloudMap.size() << std::endl;
-        // std::cout << "receivedCloudMap: " << receivedCloudMap.size() << std::endl;
-
-        publish_received_cloud_map();
+                verticesCloudMap[index1] = {index1, x1, y1, z1, false, false, false, false};
+                verticesArbitrary[index1] = {index1, x1, y1, z1, false, false};
+            }
+            
+            
+        }
+   
         createGraphFromPointCloud();
     }
 
     void check_parameters()
     {
         // Obtém os valores dos parâmetros
-        auto new_distanceToObstacle = this->get_parameter("distanceToObstacle").as_double();
-        auto new_maxSecurityDistance = this->get_parameter("maxSecurityDistance").as_double();
-        auto new_maxHeightSecurityDistance = this->get_parameter("maxHeightSecurityDistance").as_double();
-        auto new_fixedNavigableVertices = this->get_parameter("fixedNavigableVerticesDistance").as_double();
+        auto new_distanceToObstacle = static_cast<double>(this->get_parameter("distanceToObstacle").as_double());
+        auto new_maxSecurityDistance = static_cast<double>(this->get_parameter("maxSecurityDistance").as_double());
+        auto new_maxSecurityHeightDistance = static_cast<double>(this->get_parameter("maxSecurityHeightDistance").as_double());
+        auto new_fixedNavigableVertices = static_cast<double>(this->get_parameter("fixedNavigableVerticesDistance").as_double());
         auto new_fixedFrames = this->get_parameter("fixedNavigableVertices").as_bool();
       
         if (new_distanceToObstacle != distanceToObstacle_) 
@@ -518,12 +503,12 @@ private:
             RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance: %f", maxSecurityDistance_);
         }
 
-        if(new_maxHeightSecurityDistance != maxHeightSecurityDistance_)
+        if(new_maxSecurityHeightDistance != maxSecurityHeightDistance_)
         {
             verticesCloudMap.clear();
             verticesArbitrary.clear();
-            maxHeightSecurityDistance_ = new_maxHeightSecurityDistance;
-            RCLCPP_INFO(this->get_logger(), "Updated maxHeightSecurityDistance: %f", maxHeightSecurityDistance_);
+            maxSecurityHeightDistance_ = new_maxSecurityHeightDistance;
+            RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %f", maxSecurityHeightDistance_);
         }
 
         if(new_fixedNavigableVertices != fixedNavigableVertices_)
@@ -561,23 +546,26 @@ public:
        
         this->declare_parameter<double>("distanceToObstacle", 0.05);
         this->declare_parameter<double>("maxSecurityDistance", 0.25);
-        this->declare_parameter<double>("maxHeightSecurityDistance", 0.0);
+        this->declare_parameter<double>("maxSecurityHeightDistance", 0.0);
         this->declare_parameter<double>("fixedNavigableVerticesDistance", 0.20);
         this->declare_parameter<bool>("fixedNavigableVertices", true);
-
+        
+        
         // Obtém os valores iniciais dos parâmetros
-        distanceToObstacle_ = this->get_parameter("distanceToObstacle").as_double();
-        maxSecurityDistance_ = this->get_parameter("maxSecurityDistance").as_double();
-        maxHeightSecurityDistance_ = this->get_parameter("maxHeightSecurityDistance").as_double();
-        fixedNavigableVertices_ = this->get_parameter("fixedNavigableVerticesDistance").as_double();
+        distanceToObstacle_ = static_cast<double>(this->get_parameter("distanceToObstacle").as_double());
+        maxSecurityDistance_ = static_cast<double>(this->get_parameter("maxSecurityDistance").as_double());
+        maxSecurityHeightDistance_ = static_cast<double>(this->get_parameter("maxSecurityHeightDistance").as_double());
+        fixedNavigableVertices_ = static_cast<double>(this->get_parameter("fixedNavigableVerticesDistance").as_double());
         fixedFrames_ = this->get_parameter("fixedNavigableVertices").as_bool();
         // Verifica consistência inicial dos parâmetros
        
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %2f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance %2f", maxSecurityDistance_);
-        RCLCPP_INFO(this->get_logger(), "Updated maxHeightSecurityDistance: %2f", maxHeightSecurityDistance_);
+        RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %2f", maxSecurityHeightDistance_);
         RCLCPP_INFO(this->get_logger(), "Updated fixedNavigableVertice %2f", fixedNavigableVertices_);
+
+       
 
         if(fixedFrames_ == false)
         {
@@ -593,6 +581,8 @@ public:
             std::chrono::seconds(1),
             std::bind(&GraphPublisher::check_parameters, this));
 
+        decimals = countDecimals(distanceToObstacle_);
+
 
         publisher_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/vertices", 10);
         timer_ = this->create_wall_timer(15ms, std::bind(&GraphPublisher::publish_vertices, this));
@@ -604,13 +594,13 @@ public:
         timer_vertices_arbitrary = this->create_wall_timer(1000ms, std::bind(&GraphPublisher::publish_obstacles_vertices, this));
     
         subscription1_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/cloud_map", 10, std::bind(&GraphPublisher::callback_cloud_map, this, std::placeholders::_1));
+        "/rtabmap/cloud_map", 10, std::bind(&GraphPublisher::callback_cloud_map, this, std::placeholders::_1));
 
         publisher121_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/received_cloud_map", 10);
         
 
          subscription2_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, std::bind(&GraphPublisher::odomCallback, this, std::placeholders::_1));
+            "/rtabmap/odom", 10, std::bind(&GraphPublisher::odomCallback, this, std::placeholders::_1));
 
 
     }
