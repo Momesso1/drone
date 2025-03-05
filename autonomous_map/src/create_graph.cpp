@@ -30,20 +30,20 @@ using namespace std::chrono_literals;
 
 namespace std {
     template <>
-    struct hash<std::tuple<double, double>> {
-        size_t operator()(const std::tuple<double, double>& t) const {
-            size_t h1 = hash<double>()(std::get<0>(t));
-            size_t h2 = hash<double>()(std::get<1>(t));
+    struct hash<std::tuple<float, float>> {
+        size_t operator()(const std::tuple<float, float>& t) const {
+            size_t h1 = hash<float>()(std::get<0>(t));
+            size_t h2 = hash<float>()(std::get<1>(t));
             return h1 ^ (h2 << 1);  // Combine the hashes
         }
     };
 
     template <>
-    struct hash<std::tuple<double, double, double>> {
-        size_t operator()(const std::tuple<double, double, double>& t) const {
-            size_t h1 = hash<double>()(std::get<0>(t));
-            size_t h2 = hash<double>()(std::get<1>(t));
-            size_t h3 = hash<double>()(std::get<2>(t));
+    struct hash<std::tuple<float, float, float>> {
+        size_t operator()(const std::tuple<float, float, float>& t) const {
+            size_t h1 = hash<float>()(std::get<0>(t));
+            size_t h2 = hash<float>()(std::get<1>(t));
+            size_t h3 = hash<float>()(std::get<2>(t));
             return h1 ^ (h2 << 1) ^ (h3 << 2);  // Combine the hashes
         }
     };
@@ -55,21 +55,21 @@ class GraphPublisher : public rclcpp::Node {
 private:
     struct Vertex 
     {
-        std::tuple<double, double, double> key;
-        double x, y, z;
+        std::tuple<float, float, float> key;
+        float x, y, z;
         bool up;
         bool down;
     };
 
     struct VertexPointCloud 
     {
-        double x, y, z;
+        float x, y, z;
     };
 
     struct CloudMapPoint
     {
-        std::tuple<double, double, double> key;
-        double x, y, z;
+        std::tuple<float, float, float> key;
+        float x, y, z;
         bool verified;
         bool artificial;
         bool up;
@@ -78,8 +78,8 @@ private:
 
     struct CloudMapHigherLower
     {
-        std::tuple<double, double, double> key;
-        double z;
+        std::tuple<float, float, float> key;
+        float z;
     };
 
     struct Edge 
@@ -108,47 +108,47 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher121_;
     size_t count_;
 
-    double poseX_ = 0.0;
-    double poseY_ = 0.0;
-    double poseZ_ = 0.0;
-    double fixedNavigableVertices_;
-    double maxSecurityDistance_;
-    double distanceToObstacle_;
-    double maxSecurityHeightDistance_;
+    float poseX_ = 0.0;
+    float poseY_ = 0.0;
+    float poseZ_ = 0.0;
+    float fixedNavigableVertices_;
+    float maxSecurityDistance_;
+    float distanceToObstacle_;
+    float maxSecurityHeightDistance_;
     bool fixedFrames_;
     int decimals = 0;
 
-    std::unordered_map<std::tuple<double, double>, CloudMapHigherLower> lowerCloudMapPointXY;
-    std::unordered_map<std::tuple<double, double>, CloudMapHigherLower> higherCloudMapPointXY;
-    std::unordered_map<std::tuple<double, double, double>, Vertex> publishedFixedVertices;
-    std::unordered_map<std::tuple<double, double, double>, Vertex> fixedVertices;
-    std::unordered_map<std::tuple<double, double, double>, Vertex> publishedVerticesArbitrary;
-    std::unordered_map<std::tuple<double, double, double>, Vertex> verticesArbitrary;
-    std::unordered_map<std::tuple<double, double, double>, CloudMapPoint> verticesCloudMap;
-    std::unordered_map<std::tuple<double, double, double>, CloudMapPoint> receivedCloudMap;
+    std::unordered_map<std::tuple<float, float>, CloudMapHigherLower> lowerCloudMapPointXY;
+    std::unordered_map<std::tuple<float, float>, CloudMapHigherLower> higherCloudMapPointXY;
+    std::unordered_map<std::tuple<float, float, float>, Vertex> publishedFixedVertices;
+    std::unordered_map<std::tuple<float, float, float>, Vertex> fixedVertices;
+    std::unordered_map<std::tuple<float, float, float>, Vertex> publishedVerticesArbitrary;
+    std::unordered_map<std::tuple<float, float, float>, Vertex> verticesArbitrary;
+    std::unordered_map<std::tuple<float, float, float>, CloudMapPoint> verticesCloudMap;
+    std::unordered_map<std::tuple<float, float, float>, CloudMapPoint> receivedCloudMap;
 
-    double roundToDecimal(double value, int decimal_places) 
+    float roundToDecimal(float value, int decimal_places) 
     {
-        double factor = std::pow(10, decimal_places);
+        float factor = std::pow(10, decimal_places);
         return std::round(value * factor) / factor;
     }
 
-    inline double roundToMultiple(double value, double multiple, int decimals) {
+    inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
         
-        double result = std::round(value / multiple) * multiple;
-        double factor = std::pow(10.0, decimals);
+        float result = std::round(value / multiple) * multiple;
+        float factor = std::pow(10.0, decimals);
         result = std::round(result * factor) / factor;
         
         return result;
     }
 
-    int countDecimals(double number) 
+    int countDecimals(float number) 
     {
         // Separa a parte fracionária (trabalha com o valor absoluto)
-        double fractional = std::fabs(number - std::floor(number));
+        float fractional = std::fabs(number - std::floor(number));
         int decimals = 0;
-        const double epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
+        const float epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
     
         // Enquanto houver parte fracionária significativa e um limite para evitar loops infinitos
         while (fractional > epsilon && decimals < 20) {
@@ -172,9 +172,9 @@ private:
             {
                 it->second.verified = true;
                 
-                double toma = 0.0, maxToma = 0.0;
+                float toma = 0.0, maxToma = 0.0;
                 int opa = 0, opa2 = 0;
-                double new_x, new_y, new_z = 0.0;
+                float new_x, new_y, new_z = 0.0;
         
                 if(maxSecurityHeightDistance_ >= maxSecurityDistance_ + fixedNavigableVertices_)
                 {
@@ -197,11 +197,11 @@ private:
 
                         if ( maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end() )
                         {
-                            verticesCloudMap[index5] = {index5, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, false};
+                            verticesCloudMap[index5] = {index5, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, false};
                         }
                         else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end())
                         {
-                            verticesCloudMap[index5] = {index5, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, true, false};
+                            verticesCloudMap[index5] = {index5, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, true, false};
                         }
                             
                     }
@@ -215,11 +215,11 @@ private:
 
                         if (maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
                         {
-                            verticesCloudMap[index6] = {index6, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, false};
+                            verticesCloudMap[index6] = {index6, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, false};
                         }
                         else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
                         {
-                            verticesCloudMap[index6] = {index6, static_cast<double>(new_x), static_cast<double>(new_y), static_cast<double>(new_z), false, true, false, true};
+                            verticesCloudMap[index6] = {index6, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, true};
                         }
                     }
 
@@ -306,7 +306,7 @@ private:
                     
 
         auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time_;
+        std::chrono::duration<float> duration = end_time - start_time_;
         RCLCPP_INFO(this->get_logger(), "Tempo para criar o grafo de obstaculos: %.6lf", duration.count());
     }
 
@@ -372,9 +372,9 @@ private:
                 subdrone_interfaces::msg::PassarVertices Vertex;
                 Vertex.up = vertex.up;
                 Vertex.down = vertex.down;
-                Vertex.x = roundToMultiple(static_cast<double>(vertex.x), distanceToObstacle_, decimals);
-                Vertex.y = roundToMultiple(static_cast<double>(vertex.y), distanceToObstacle_, decimals);
-                Vertex.z = roundToMultiple(static_cast<double>(vertex.z), distanceToObstacle_, decimals);
+                Vertex.x = roundToMultiple(static_cast<float>(vertex.x), distanceToObstacle_, decimals);
+                Vertex.y = roundToMultiple(static_cast<float>(vertex.y), distanceToObstacle_, decimals);
+                Vertex.z = roundToMultiple(static_cast<float>(vertex.z), distanceToObstacle_, decimals);
 
                 vertex1.key = vertex.key;
                 vertex1.x = vertex.x;
@@ -453,9 +453,9 @@ private:
         for (const auto& point : pcl_cloud.points) 
         {
         
-            double x1 = roundToMultiple(static_cast<double>(point.x), distanceToObstacle_, decimals);
-            double y1 = roundToMultiple(static_cast<double>(point.y), distanceToObstacle_, decimals);
-            double z1 = roundToMultiple(static_cast<double>(point.z), distanceToObstacle_, decimals);
+            float x1 = roundToMultiple(static_cast<float>(point.x), distanceToObstacle_, decimals);
+            float y1 = roundToMultiple(static_cast<float>(point.y), distanceToObstacle_, decimals);
+            float z1 = roundToMultiple(static_cast<float>(point.z), distanceToObstacle_, decimals);
 
             auto index1 = std::make_tuple(x1, y1, z1);
 
@@ -481,10 +481,10 @@ private:
     void check_parameters()
     {
         // Obtém os valores dos parâmetros
-        auto new_distanceToObstacle = static_cast<double>(this->get_parameter("distanceToObstacle").as_double());
-        auto new_maxSecurityDistance = static_cast<double>(this->get_parameter("maxSecurityDistance").as_double());
-        auto new_maxSecurityHeightDistance = static_cast<double>(this->get_parameter("maxSecurityHeightDistance").as_double());
-        auto new_fixedNavigableVertices = static_cast<double>(this->get_parameter("fixedNavigableVerticesDistance").as_double());
+        auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
+        auto new_maxSecurityDistance = static_cast<float>(this->get_parameter("maxSecurityDistance").get_parameter_value().get<double>());
+        auto new_maxSecurityHeightDistance = static_cast<float>(this->get_parameter("maxSecurityHeightDistance").get_parameter_value().get<double>());
+        auto new_fixedNavigableVertices = static_cast<float>(this->get_parameter("fixedNavigableVerticesDistance").get_parameter_value().get<double>());
         auto new_fixedFrames = this->get_parameter("fixedNavigableVertices").as_bool();
       
         if (new_distanceToObstacle != distanceToObstacle_) 
@@ -552,10 +552,10 @@ public:
         
         
         // Obtém os valores iniciais dos parâmetros
-        distanceToObstacle_ = static_cast<double>(this->get_parameter("distanceToObstacle").as_double());
-        maxSecurityDistance_ = static_cast<double>(this->get_parameter("maxSecurityDistance").as_double());
-        maxSecurityHeightDistance_ = static_cast<double>(this->get_parameter("maxSecurityHeightDistance").as_double());
-        fixedNavigableVertices_ = static_cast<double>(this->get_parameter("fixedNavigableVerticesDistance").as_double());
+        distanceToObstacle_ = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
+        maxSecurityDistance_ = static_cast<float>(this->get_parameter("maxSecurityDistance").get_parameter_value().get<double>());
+        maxSecurityHeightDistance_ = static_cast<float>(this->get_parameter("maxSecurityHeightDistance").get_parameter_value().get<double>());
+        fixedNavigableVertices_ = static_cast<float>(this->get_parameter("fixedNavigableVerticesDistance").get_parameter_value().get<double>());
         fixedFrames_ = this->get_parameter("fixedNavigableVertices").as_bool();
         // Verifica consistência inicial dos parâmetros
        

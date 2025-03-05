@@ -36,13 +36,13 @@ using namespace std::chrono_literals;
 namespace std 
 {
     template <>
-    struct hash<std::tuple<double, double, double>> 
+    struct hash<std::tuple<float, float, float>> 
     {
-        size_t operator()(const std::tuple<double, double, double>& t) const 
+        size_t operator()(const std::tuple<float, float, float>& t) const 
         {
-            size_t h1 = hash<double>()(std::get<0>(t));
-            size_t h2 = hash<double>()(std::get<1>(t));
-            size_t h3 = hash<double>()(std::get<2>(t));
+            size_t h1 = hash<float>()(std::get<0>(t));
+            size_t h2 = hash<float>()(std::get<1>(t));
+            size_t h3 = hash<float>()(std::get<2>(t));
             
             return h1 ^ (h2 << 1) ^ (h3 << 2);
         }
@@ -54,7 +54,7 @@ class NavigableGraph : public rclcpp::Node {
 private:
     struct Vertex {
         int key;
-        double x, y, z;
+        float x, y, z;
         bool up;
         bool down;
     };
@@ -62,29 +62,29 @@ private:
     struct ObstaclesVertices 
     {
         int key;
-        double x, y, z;
+        float x, y, z;
         bool verified;
         bool up;
         bool down;
     };
 
     struct StringVertex {
-        std::tuple<double, double, double> key;
-        double x, y, z;
+        std::tuple<float, float, float> key;
+        float x, y, z;
         bool up;
         bool down;
     };
 
     struct VertexDijkstra {
-        double x, y, z;
-        double orientation_x, orientation_y, orientation_z;
-        double orientation_w;
+        float x, y, z;
+        float orientation_x, orientation_y, orientation_z;
+        float orientation_w;
     };
 
     struct Destinos {
-        double x, y, z;
-        double orientation_x, orientation_y, orientation_z;
-        double orientation_w;
+        float x, y, z;
+        float orientation_x, orientation_y, orientation_z;
+        float orientation_w;
     };
 
     struct Edge {
@@ -126,12 +126,12 @@ private:
 
 
     int i_ = 0, temp_ = 1, enviados = 0, vertices_enviados = 0, contador = 0;
-    double resolution_; 
-    double pose_x_ = 0, pose_y_ = 0, pose_z_ = 0;
-    double distanceToObstacle_;
-    double x_min_, x_max_;
-    double y_min_, y_max_;
-    double z_min_, z_max_; 
+    float resolution_; 
+    float pose_x_ = 0, pose_y_ = 0, pose_z_ = 0;
+    float distanceToObstacle_;
+    float x_min_, x_max_;
+    float y_min_, y_max_;
+    float z_min_, z_max_; 
     int decimals = 0;
 
     std::vector<Edge> edges_;
@@ -142,43 +142,43 @@ private:
     std::vector<Edge> navigableEdges_;
     std::vector<StringEdge> stringNavigableEdges_;  
     std::vector<Vertex> navigableVertices_;
-    std::unordered_map<int, double> g_score, f_score;
+    std::unordered_map<int, float> g_score, f_score;
     std::unordered_map<int, int> came_from;
-    std::unordered_map<std::pair<int, int>, double, pair_hash> distances;
+    std::unordered_map<std::pair<int, int>, float, pair_hash> distances;
     std::unordered_map<int, std::vector<int>> adjacency_list;
-    std::unordered_map<std::tuple<double, double, double>, StringVertex> removedNavigableVertices;
-    std::unordered_map<std::tuple<double, double, double>, ObstaclesVertices> fixedNavigableVerticesMap;
-    std::unordered_map<std::tuple<double, double, double>, ObstaclesVertices> obstaclesVertices_;
-    std::unordered_map<std::tuple<double, double, double>, Vertex> navigableVerticesMap;
-    std::priority_queue<std::pair<double, int>, std::vector<std::pair<double, int>>, std::greater<>> open_set;
+    std::unordered_map<std::tuple<float, float, float>, StringVertex> removedNavigableVertices;
+    std::unordered_map<std::tuple<float, float, float>, ObstaclesVertices> fixedNavigableVerticesMap;
+    std::unordered_map<std::tuple<float, float, float>, ObstaclesVertices> obstaclesVertices_;
+    std::unordered_map<std::tuple<float, float, float>, Vertex> navigableVerticesMap;
+    std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>, std::greater<>> open_set;
    
 
-    inline double roundToMultiple(double value, double multiple, int decimals) {
+    inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
         
-        double result = std::round(value / multiple) * multiple;
-        double factor = std::pow(10.0, decimals);
+        float result = std::round(value / multiple) * multiple;
+        float factor = std::pow(10.0, decimals);
         result = std::round(result * factor) / factor;
         
         return result;
     }
     
-    inline double roundToMultipleFromBase(double value, double base, double multiple, int decimals) {
+    inline float roundToMultipleFromBase(float value, float base, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
         
-        double result = base + std::round((value - base) / multiple) * multiple;
-        double factor = std::pow(10.0, decimals);
+        float result = base + std::round((value - base) / multiple) * multiple;
+        float factor = std::pow(10.0, decimals);
         result = std::round(result * factor) / factor;
         
         return result;
     }
 
-    int countDecimals(double number) 
+    int countDecimals(float number) 
     {
         // Separa a parte fracionária (trabalha com o valor absoluto)
-        double fractional = std::fabs(number - std::floor(number));
+        float fractional = std::fabs(number - std::floor(number));
         int decimals = 0;
-        const double epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
+        const float epsilon = 1e-9; // tolerância para determinar quando a parte fracionária é zero
     
         // Enquanto houver parte fracionária significativa e um limite para evitar loops infinitos
         while (fractional > epsilon && decimals < 20) {
@@ -198,20 +198,20 @@ private:
         navigableEdges_.clear();
         navigableVertices_.clear();
         int id_counter = navigableVerticesMap.size();
-        double new_x, new_y, new_z = 0.0;
+        float new_x, new_y, new_z = 0.0;
 
-        for (double x = x_min_; x <= x_max_; x += distanceToObstacle_) {
-            for (double y = y_min_; y <= y_max_; y += distanceToObstacle_) {
-                for (double z = z_min_; z <= z_max_; z += distanceToObstacle_) {
+        for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) {
+            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) {
+                for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) {
                    
                     
                     //Arredondando as posições dos vértices navegáveis para ficar em posições sincronizadas com os vértices que são obstaculos.
                     new_x = roundToMultiple(x, distanceToObstacle_, decimals);
                     new_y = roundToMultiple(y, distanceToObstacle_, decimals);
                     new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
-                    auto index = std::make_tuple(static_cast<double>(new_x), 
-                    static_cast<double>(new_y), 
-                    static_cast<double>(new_z));
+                    auto index = std::make_tuple(static_cast<float>(new_x), 
+                    static_cast<float>(new_y), 
+                    static_cast<float>(new_z));
                     
                     if (obstaclesVertices_.find(index) == obstaclesVertices_.end() && navigableVerticesMap.find(index) == navigableVerticesMap.end())
                     {
@@ -278,7 +278,7 @@ private:
 
         
         auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time_;
+        std::chrono::duration<float> duration = end_time - start_time_;
 
       
     }
@@ -289,51 +289,54 @@ private:
         PUBLISHERS.
 
     */
+    
+    
+    
+   
+     void publish_visualize_navigable_vertices()
+     {
+         auto start_time_ = std::chrono::high_resolution_clock::now();
+         sensor_msgs::msg::PointCloud2 cloud_msg1;
+         cloud_msg1.header.stamp = this->get_clock()->now();
+         cloud_msg1.header.frame_id = "map";
 
-    // void publish_visualize_navigable_vertices()
-    // {
-    //     auto start_time_ = std::chrono::high_resolution_clock::now();
-    //     sensor_msgs::msg::PointCloud2 cloud_msg1;
-    //     cloud_msg1.header.stamp = this->get_clock()->now();
-    //     cloud_msg1.header.frame_id = "map";
+          
+         cloud_msg1.height = 1;  
+         cloud_msg1.width = navigableVerticesMap.size();  
+         cloud_msg1.is_dense = true;
+         cloud_msg1.is_bigendian = false;
+         cloud_msg1.point_step = 3 * sizeof(float);
+         cloud_msg1.row_step = cloud_msg1.point_step * cloud_msg1.width;
 
-    //     // Configuração dos campos do PointCloud2
-    //     cloud_msg1.height = 1;  // Ponto único em cada linha
-    //     cloud_msg1.width = navigableVerticesMap.size(); // Quantidade de vértices
-    //     cloud_msg1.is_dense = true;
-    //     cloud_msg1.is_bigendian = false;
-    //     cloud_msg1.point_step = 3 * sizeof(float); // x, y, z
-    //     cloud_msg1.row_step = cloud_msg1.point_step * cloud_msg1.width;
+          
+         sensor_msgs::PointCloud2Modifier modifier(cloud_msg1);
+         modifier.setPointCloud2FieldsByString(1, "xyz");
+         modifier.resize(cloud_msg1.width);
 
-    //     // Adicionar campos de x, y, z
-    //     sensor_msgs::PointCloud2Modifier modifier(cloud_msg1);
-    //     modifier.setPointCloud2FieldsByString(1, "xyz");
-    //     modifier.resize(cloud_msg1.width);
+          
+         sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg1, "x");
+         sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg1, "y");
+         sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg1, "z");
 
-    //     // Preencher os dados do PointCloud2
-    //     sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg1, "x");
-    //     sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg1, "y");
-    //     sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg1, "z");
-
-    //     for (const auto& [key, vertex] : navigableVerticesMap) 
-    //     {
+         for (const auto& [key, vertex] : navigableVerticesMap) 
+         {
                 
-    //         *iter_x = vertex.x;  // Access the x coordinate of the current Vertex
-    //         *iter_y = vertex.y;  // Access the y coordinate of the current Vertex
-    //         *iter_z = vertex.z;  // Access the z coordinate of the current Vertex
+             *iter_x = vertex.x;   
+             *iter_y = vertex.y;   
+             *iter_z = vertex.z;   
 
-    //         ++iter_x;
-    //         ++iter_y;
-    //         ++iter_z;
+             ++iter_x;
+             ++iter_y;
+             ++iter_z;
             
  
-    //     }
-    //     publisher_visualize_navigable_graph->publish(cloud_msg1);
+         }
+         publisher_visualize_navigable_graph->publish(cloud_msg1);
 
-    //     auto end_time = std::chrono::high_resolution_clock::now();
-    //     std::chrono::duration<double> duration = end_time - start_time_;
-    // }
-
+         auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> duration = end_time - start_time_;
+    }
+ 
 
     void publish_removed_navigable_vertices()
     { 
@@ -436,14 +439,14 @@ private:
 
     void check_parameters()
     {
-        // Obtendo parâmetros como double e convertendo para double
-        auto new_distanceToObstacle = static_cast<double>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
-        auto new_x_min = static_cast<double>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        auto new_x_max = static_cast<double>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        auto new_y_min = static_cast<double>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        auto new_y_max = static_cast<double>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        auto new_z_min = static_cast<double>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        auto new_z_max = static_cast<double>(this->get_parameter("z_max").get_parameter_value().get<double>());
+        // Obtendo parâmetros como float e convertendo para float
+        auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
+        auto new_x_min = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        auto new_x_max = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        auto new_y_min = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        auto new_y_max = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        auto new_z_min = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        auto new_z_max = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
 
         auto new_resolution = this->get_parameter("resolution").get_parameter_value().get<int>();
 
@@ -538,15 +541,15 @@ public:
         this->declare_parameter<double>("z_min", 0.2);
         this->declare_parameter<double>("z_max", 0.2);
 
-        // Initialize parameters as double usando static_cast
-        distanceToObstacle_ = static_cast<double>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
+        // Initialize parameters as float usando static_cast
+        distanceToObstacle_ = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         resolution_ = this->get_parameter("resolution").get_parameter_value().get<int>();
-        x_min_ = static_cast<double>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        x_max_ = static_cast<double>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        y_min_ = static_cast<double>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        y_max_ = static_cast<double>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        z_min_ = static_cast<double>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        z_max_ = static_cast<double>(this->get_parameter("z_max").get_parameter_value().get<double>());
+        x_min_ = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        x_max_ = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        y_min_ = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        y_max_ = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        z_min_ = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        z_max_ = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Resolution is set to: %0.f", resolution_);
@@ -570,8 +573,8 @@ public:
         subscription_fixed_vertices = this->create_subscription<subdrone_interfaces::msg::PassarArrayVertices>(
             "/fixed_vertices", 10, std::bind(&NavigableGraph::callback_fixed_vertices, this, std::placeholders::_1));
 
-        // publisher_visualize_navigable_graph = this->create_publisher<sensor_msgs::msg::PointCloud2>("/visualize_navigable_vertices", 10);
-        // timer_visualize_navigable_graph = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_visualize_navigable_vertices, this));
+         publisher_visualize_navigable_graph = this->create_publisher<sensor_msgs::msg::PointCloud2>("/visualize_navigable_vertices", 10);
+        timer_visualize_navigable_graph = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_visualize_navigable_vertices, this));
 
         publisher_removed_navigable_vertices_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/removed_navigable_vertices", 10);
         timer_removed_navigable_vertices = this->create_wall_timer(1ms, std::bind(&NavigableGraph::publish_removed_navigable_vertices, this));

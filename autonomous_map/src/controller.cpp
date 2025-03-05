@@ -86,8 +86,8 @@ private:
 
         if (distance > 0.1) {
             velocity_msg.linear.x = 0.15;
-            velocity_msg.angular.z = std::clamp(0.45 * angle_diff, -0.25, 0.25);
-            velocity_msg.linear.z = std::clamp(0.05 * pitch_angle, -0.25, 0.25);
+            velocity_msg.angular.z = std::clamp(0.45 * angle_diff, -0.1, 0.1);
+            velocity_msg.linear.z = std::clamp(0.05 * pitch_angle, -0.1, 0.1);
         } else {
             velocity_msg.linear.x = 0.0;
             velocity_msg.angular.z = 0.0;
