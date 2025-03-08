@@ -359,73 +359,6 @@ private:
     }
 
    
-    void publish_vertices() 
-    {
-        subdrone_interfaces::msg::PassarArrayVertices verticesMessage;
-
-        
-        for (const auto& [key, vertex] : verticesArbitrary) 
-        {
-            
-            
-                Vertex vertex1;
-                subdrone_interfaces::msg::PassarVertices Vertex;
-                Vertex.up = vertex.up;
-                Vertex.down = vertex.down;
-                Vertex.x = roundToMultiple(static_cast<float>(vertex.x), distanceToObstacle_, decimals);
-                Vertex.y = roundToMultiple(static_cast<float>(vertex.y), distanceToObstacle_, decimals);
-                Vertex.z = roundToMultiple(static_cast<float>(vertex.z), distanceToObstacle_, decimals);
-
-                vertex1.key = vertex.key;
-                vertex1.x = vertex.x;
-                vertex1.y = vertex.y;
-                vertex1.z = vertex.z;
-        
-
-                verticesMessage.data.push_back(Vertex);
-                publishedVerticesArbitrary[vertex.key] = (vertex1);
-            
-        
-    
-                
-        }
-        
-
-        
-       
-        publisher_->publish(verticesMessage);
-    }
-
-    void publish_fixed_vertices() 
-    {
-        subdrone_interfaces::msg::PassarArrayVertices verticesMessage1;
-
-        if(!fixedVertices.empty())
-        {
-            for (const auto& [key, vertex] : fixedVertices) 
-            {
-                Vertex Vertex1;
-                subdrone_interfaces::msg::PassarVertices Vertex;
-                Vertex.x = vertex.x;
-                Vertex.y = vertex.y;
-                Vertex.z = vertex.z;
-                
-                Vertex1.key = vertex.key;
-                Vertex1.x = vertex.x;
-                Vertex1.y = vertex.y;
-                Vertex1.z = vertex.z;
-
-                verticesMessage1.data.push_back(Vertex);
-                publishedFixedVertices[vertex.key] = (Vertex1);
-                    
-                   
-            }
-        }
-
-       
-        publisher_fixed_vertices->publish(verticesMessage1);
-    }
-
 
 
 
@@ -484,9 +417,7 @@ private:
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_maxSecurityDistance = static_cast<float>(this->get_parameter("maxSecurityDistance").get_parameter_value().get<double>());
         auto new_maxSecurityHeightDistance = static_cast<float>(this->get_parameter("maxSecurityHeightDistance").get_parameter_value().get<double>());
-        auto new_fixedNavigableVertices = static_cast<float>(this->get_parameter("fixedNavigableVerticesDistance").get_parameter_value().get<double>());
-        auto new_fixedFrames = this->get_parameter("fixedNavigableVertices").as_bool();
-      
+        
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             verticesCloudMap.clear();
@@ -510,31 +441,7 @@ private:
             maxSecurityHeightDistance_ = new_maxSecurityHeightDistance;
             RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %f", maxSecurityHeightDistance_);
         }
-
-        if(new_fixedNavigableVertices != fixedNavigableVertices_)
-        {
-            verticesCloudMap.clear();
-            verticesArbitrary.clear();
-            fixedNavigableVertices_ = new_fixedNavigableVertices;
-            RCLCPP_INFO(this->get_logger(), "Updated fixedNavigableVerticesDistance: %f", fixedNavigableVertices_);
-        }
-
-        if(new_fixedFrames != fixedFrames_)
-        {
-            fixedVertices.clear();
-            verticesCloudMap.clear();
-            verticesArbitrary.clear();
-            fixedFrames_ = new_fixedFrames;
-            if(fixedFrames_ == true)
-            {
-                RCLCPP_INFO(this->get_logger(), "Fixed navigable vertices are activated");
-            }
-            else if(fixedFrames_ == false)
-            {
-                RCLCPP_INFO(this->get_logger(), "Fixed navigable vertices are not activated");
-            }
-        }
-
+  
 
     }
 
@@ -547,35 +454,20 @@ public:
         this->declare_parameter<double>("distanceToObstacle", 0.05);
         this->declare_parameter<double>("maxSecurityDistance", 0.25);
         this->declare_parameter<double>("maxSecurityHeightDistance", 0.0);
-        this->declare_parameter<double>("fixedNavigableVerticesDistance", 0.20);
-        this->declare_parameter<bool>("fixedNavigableVertices", true);
-        
-        
-        // Obtém os valores iniciais dos parâmetros
+
+
         distanceToObstacle_ = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         maxSecurityDistance_ = static_cast<float>(this->get_parameter("maxSecurityDistance").get_parameter_value().get<double>());
         maxSecurityHeightDistance_ = static_cast<float>(this->get_parameter("maxSecurityHeightDistance").get_parameter_value().get<double>());
-        fixedNavigableVertices_ = static_cast<float>(this->get_parameter("fixedNavigableVerticesDistance").get_parameter_value().get<double>());
-        fixedFrames_ = this->get_parameter("fixedNavigableVertices").as_bool();
-        // Verifica consistência inicial dos parâmetros
        
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %2f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance %2f", maxSecurityDistance_);
         RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %2f", maxSecurityHeightDistance_);
-        RCLCPP_INFO(this->get_logger(), "Updated fixedNavigableVertice %2f", fixedNavigableVertices_);
 
        
 
-        if(fixedFrames_ == false)
-        {
-            RCLCPP_INFO(this->get_logger(), "Fixed navigable vertices are NOT activated");
-        }
-        else
-        {
-            RCLCPP_INFO(this->get_logger(), "Fixed navigable vertices are activated");
-        }
-
+      
         // Timer para verificar alterações nos parâmetros
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(1),
@@ -584,11 +476,7 @@ public:
         decimals = countDecimals(distanceToObstacle_);
 
 
-        publisher_ = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/vertices", 10);
-        timer_ = this->create_wall_timer(15ms, std::bind(&GraphPublisher::publish_vertices, this));
 
-        publisher_fixed_vertices = this->create_publisher<subdrone_interfaces::msg::PassarArrayVertices>("/fixed_vertices", 10);
-        timer_fixed_vertices = this->create_wall_timer(15ms, std::bind(&GraphPublisher::publish_fixed_vertices, this));
 
         publisher_vertices_arbitrary = this->create_publisher<sensor_msgs::msg::PointCloud2>("/obstacles_vertices", 10);
         timer_vertices_arbitrary = this->create_wall_timer(1000ms, std::bind(&GraphPublisher::publish_obstacles_vertices, this));
