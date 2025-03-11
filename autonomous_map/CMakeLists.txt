@@ -35,9 +35,6 @@ ament_target_dependencies(docking_node rclcpp std_msgs subdrone_interfaces nav_m
 add_executable(a_estrela src/a_estrela.cpp)
 ament_target_dependencies(a_estrela rclcpp subdrone_interfaces nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
 
-add_executable(navigable_graph src/navigable_graph.cpp)
-ament_target_dependencies(navigable_graph rclcpp subdrone_interfaces nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
-
 add_executable(send_poses src/send_poses.cpp)
 ament_target_dependencies(send_poses rclcpp subdrone_interfaces nav_msgs geometry_msgs yaml-cpp PCL pcl_conversions nav_msgs tf2_geometry_msgs sensor_msgs yolo_msgs)
 
@@ -72,12 +69,6 @@ target_link_libraries(a_estrela
   ${PCL_LIBRARIES}
 )
 
-target_link_libraries(navigable_graph
-  ${rclcpp_LIBRARIES}
-  ${std_msgs_LIBRARIES}
-  ${GLEW_LIBRARIES}
-  ${PCL_LIBRARIES}
-)
 
 target_link_libraries(send_poses
   ${rclcpp_LIBRARIES}
@@ -116,7 +107,6 @@ install(TARGETS
   docking_node
   send_poses
   a_estrela
-  navigable_graph
   controller
   save_point_cloud
   DESTINATION lib/${PROJECT_NAME}

@@ -177,15 +177,12 @@ private:
     std::vector<VertexDijkstra> verticesDestino_;
     std::vector<VertexDijkstra> verticesDijkstra;
     std::vector<Edge> shortestPathEdges;
-    std::vector<Edge> navigableEdges_; 
-
     
-    std::unordered_map<int, std::vector<std::pair<int, int>>> relatedEdges;
+
     
     std::unordered_map<int, std::vector<int>> adjacency_list;
     //std::unordered_map<int, std::unordered_set<std::pair<int, int>, PairHash>> adjacency_list;
-    std::unordered_map<std::string, Vertex> fixedNavigableVerticesMap;
-    std::unordered_map<std::tuple<float, float, float>, Vertex> obstaclesVertices_;
+    std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<std::tuple<float, float, float>, Vertex> navigableVerticesMap;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
@@ -279,81 +276,7 @@ private:
     }
     
     
-    void createGraph() 
-    {
-        auto start_time_ = std::chrono::high_resolution_clock::now();
-        navigableVerticesMap.clear();
-        navigableEdges_.clear();
-        int id_counter = 0;
-        navigableVerticesMapInteger.clear();
-
-        
-
-       
-        
-        float new_x, new_y, new_z = 0.0;
-        int z_counter = 0;
-        for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) 
-        {
-            z_counter++;
-            int y_counter = 0;
-            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) 
-            {
-                int x_counter = 0;
-                
-                y_counter++;
-                for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) 
-                {
-                
-                    new_x = roundToMultiple(x, distanceToObstacle_, decimals);
-                    new_y = roundToMultiple(y, distanceToObstacle_, decimals);
-                    new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
-
-                    auto index = std::make_tuple(static_cast<float>(new_x), 
-                        static_cast<float>(new_y), 
-                        static_cast<float>(new_z));
-
-                    if (navigableVerticesMap.find(index) == navigableVerticesMap.end())
-                    {
-                        Vertex v;
-                        v.key = id_counter;
-                        v.x = new_x;
-                        v.y = new_y;
-                        v.z = new_z;
-    
-                        navigableVerticesMapInteger[id_counter] = v;
-                        
-                        navigableVerticesMap[index] = v;
-                        id_counter++;
-                        x_counter++;
-                    }
-                    
-                }
-
-                
-                xVertices = x_counter;
-            }
-            
-            yVertices = y_counter;
-        }
-
-        totalVertices = xVertices * yVertices * z_counter;
-        zVertices = xVertices * yVertices;
-
-        
-        auto end_time1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<float> duration1 = end_time1 - start_time_;
-        std::cout << "Vertices created in: " << duration1.count() << " seconds" << std::endl;
-        
-        maxSize = id_counter;
-
-
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<float> duration = end_time - start_time_;
-        std::cout << "Graph created in: " << duration.count() << " seconds" << std::endl;
-
-    }
-    
+   
 
    
     std::vector<int> runAStar(float start[3], float goal[3]) 
@@ -365,55 +288,68 @@ private:
         std::unordered_map<int, float> f_score;
         std::unordered_set<int> closed_set;
        
-
-        // Determina os índices de start e goal
-        int start_index = -1, end_index = -1;
-
-        /*
-            Criando um vértice na posição atual do robô.
-        */
-    
-        Vertex v;
-        v.key = maxSize;
-        start_index = maxSize;
-        v.x = start[0];
-        v.y = start[1];
-        v.z = start[2];
-
-        auto index = std::make_tuple(v.x, v.y, v.z);
-        
-        
-        navigableVerticesMap[index] = v;
-        navigableVerticesMapInteger[start_index] = v;
-
-        globalIndex = index;
-
         auto offsets1 = getOffsets(distanceToObstacle_);
+        int start_index = 0, end_index = 1;
+        int k = 2;
+
+        Vertex vStart;
+        vStart.key = start_index;
+        vStart.x = start[0];
+        vStart.y = start[1];
+        vStart.z = start[2];
+
+        auto index = std::make_tuple(vStart.x, vStart.y, vStart.z);
+        
+        
+        navigableVerticesMap[index] = vStart;
+        navigableVerticesMapInteger[start_index] = vStart;
+
       
         float new_x = 0.0, new_y = 0.0, new_z = 0.0;
         bool findNavigableVertice = false;
+
+        
         for(int i = 1; i <= 2; i++)
         {
-            std::vector<int> edges;
             for (int a = 0; a < 26; a++) 
             {
-                new_x = roundToMultiple(navigableVerticesMap[index].x + (offsets1[a][0] * i), distanceToObstacle_, decimals);
-                new_y = roundToMultiple(navigableVerticesMap[index].y + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z = roundToMultipleFromBase(navigableVerticesMap[index].z + (offsets1[a][2] * i), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);  
+                new_x = roundToMultiple(navigableVerticesMapInteger[start_index].x + (offsets1[a][0] * i), distanceToObstacle_, decimals);
+                new_y = roundToMultiple(navigableVerticesMapInteger[start_index].y + (offsets1[a][1] * i), distanceToObstacle_, decimals);
+                new_z = roundToMultipleFromBase(navigableVerticesMapInteger[start_index].z + (offsets1[a][2] * i), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);  
 
                 auto index1 = std::make_tuple(static_cast<float>(new_x), 
                 static_cast<float>(new_y), 
                 static_cast<float>(new_z));
 
                 
-                if (navigableVerticesMap.find(index1) != navigableVerticesMap.end())
+                if (obstaclesVertices.find(index1) == obstaclesVertices.end())
                 { 
                     
-                    adjacency_list[start_index].push_back(navigableVerticesMap[index1].key);
-                    findNavigableVertice = true;
+                    if(navigableVerticesMap.find(index1) == navigableVerticesMap.end())
+                    {
+
+                        navigableVerticesMap[index1] = {k, new_x, new_y, new_z};
+
+                        navigableVerticesMapInteger[navigableVerticesMap[index1].key] = {k, new_x, new_y, new_z};
+                        
+                        adjacency_list[start_index].push_back(navigableVerticesMap[index1].key);
+                        
+                        k++;
+                        
+                        findNavigableVertice = true;
+                    }
+                    else
+                    {
                  
+                        adjacency_list[start_index].push_back(navigableVerticesMap[index1].key);
+
+                        findNavigableVertice = true;
+                    }
                 } 
             }
+
+
+            
 
         }
     
@@ -430,41 +366,60 @@ private:
        
 
         Vertex vGoal;
-        vGoal.key = maxSize + 1;
-        end_index = maxSize + 1;
+        vGoal.key = end_index;
         vGoal.x = goal[0];
         vGoal.y = goal[1];
         vGoal.z = goal[2];
 
-    
-        auto goalIndex = std::make_tuple(vGoal.x, vGoal.y, vGoal.z);
-
-        navigableVerticesMap[goalIndex] = vGoal;
+        
+        auto index4 = std::make_tuple(vStart.x, vStart.y, vStart.z);
+        
+        
+        navigableVerticesMap[index4] = vGoal;
         navigableVerticesMapInteger[end_index] = vGoal;
         
         bool findNavigableGoalVertice = false;
-        globalGoalIndex = goalIndex;
+        
         float new_x1 = 0.0, new_y1 = 0.0, new_z1 = 0.0;
-
+        
 
 
         for(int i = 1; i <= 2; i++)
         {
             for (int a = 0; a < 26; a++) 
             {
-                new_x1 = roundToMultiple(navigableVerticesMap[goalIndex].x + (offsets1[a][0] * i), distanceToObstacle_, decimals);
-                new_y1 = roundToMultiple(navigableVerticesMap[goalIndex].y + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z1 = roundToMultipleFromBase(navigableVerticesMap[goalIndex].z + (offsets1[a][2] * i), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);  
+                new_x1 = roundToMultiple(navigableVerticesMapInteger[end_index].x + (offsets1[a][0] * i), distanceToObstacle_, decimals);
+                new_y1 = roundToMultiple(navigableVerticesMapInteger[end_index].y + (offsets1[a][1] * i), distanceToObstacle_, decimals);
+                new_z1 = roundToMultipleFromBase(navigableVerticesMapInteger[end_index].z + (offsets1[a][2] * i), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);  
 
                 auto index2 = std::make_tuple(static_cast<float>(new_x1), 
                 static_cast<float>(new_y1), 
                 static_cast<float>(new_z1));
 
                 
-                if (navigableVerticesMap.find(index2) != navigableVerticesMap.end())
+                if (obstaclesVertices.find(index2) == obstaclesVertices.end())
                 { 
-                    adjacency_list[navigableVerticesMap[index2].key].push_back(end_index);
-                    findNavigableGoalVertice = true;
+                    if(navigableVerticesMap.find(index2) == navigableVerticesMap.end())
+                    {
+
+                        navigableVerticesMap[index2] = {k, new_x1, new_y1, new_z1};
+
+                        navigableVerticesMapInteger[navigableVerticesMap[index2].key] = {k, new_x1, new_y1, new_z1};
+                        
+                        adjacency_list[navigableVerticesMap[index2].key].push_back(end_index);
+                        
+                        k++;
+                        
+                        findNavigableGoalVertice = true;
+                    }
+                    else
+                    {
+                  
+                        adjacency_list[navigableVerticesMap[index2].key].push_back(end_index);
+
+                        findNavigableGoalVertice = true;
+                    }
+
                 } 
             }
 
@@ -477,14 +432,15 @@ private:
             return {};   
         }
 
+
         float distance = 0.0;
+
         auto heuristic = [&](int a, int b) {
             const auto &pa = navigableVerticesMapInteger[a];
             const auto &pb = navigableVerticesMapInteger[b];
         
             
             distance = std::sqrt(std::pow(pa.x - pb.x, 2) + std::pow(pa.y - pb.y, 2) + std::pow(pa.z - pb.z, 2));
-
             return distance;
         };
 
@@ -493,13 +449,15 @@ private:
     
         g_score[start_index] = 0;
         f_score[start_index] = heuristic(start_index, end_index);
-
+        
 
         std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>, std::greater<> > open_set;
         open_set.push({f_score[start_index], start_index});
-
         while (!open_set.empty()) 
         {
+           
+
+           
             auto current_pair = open_set.top();
             open_set.pop();
             int current = current_pair.second;
@@ -516,18 +474,35 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
     
-                    
-                    if (navigableVerticesMap.find(index1) != navigableVerticesMap.end())
-                    { 
-                        
-                        adjacency_list[current].push_back(navigableVerticesMap[index1].key); 
-                        
-                    
-                    } 
-                }
+                   
+                    if (obstaclesVertices.find(index1) == obstaclesVertices.end())
+                    {
+                       
+                        if(navigableVerticesMap.find(index1) == navigableVerticesMap.end())
+                        {
+                            
+                            navigableVerticesMap[index1] = {k, new_x, new_y, new_z};
 
-                int i = 2;
-                bool pode1 = true, pode2 = true, pode3 = true, pode4 = true, pode5 = true, pode6 = true, pode7 = true, pode8 = true;
+                            navigableVerticesMapInteger[navigableVerticesMap[index1].key] = {k, new_x, new_y, new_z};
+
+                            adjacency_list[current].push_back(navigableVerticesMap[index1].key);
+                            
+                            k++;
+                            
+                          
+                        }
+                        else
+                        {
+                                                    
+                            adjacency_list[current].push_back(navigableVerticesMap[index1].key);
+
+                        }
+
+     
+                    } 
+
+
+               
                 /*
                 
                 
@@ -535,17 +510,27 @@ private:
                 
                 
                 */
+               
+              
+
+                    
+                }
+                
+                int i = 2;
+                float new_x2 = 0.0, new_y2 = 0.0, new_z2 = 0.0;
+                bool pode1 = true, pode2 = true, pode3 = true, pode4 = true, pode5 = true, pode6 = true, pode7 = true, pode8 = true;
+                
                 while(i <= diagonalEdges_)
                 {
                    
                     if(i > 1 || i < -1)
                     {
                    
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        auto index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        auto index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
@@ -564,25 +549,43 @@ private:
                         new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
                         auto index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode1 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode1 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key);   
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                         }
                         
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
@@ -601,16 +604,34 @@ private:
                         new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode2 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode2 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                          
                                 
@@ -619,11 +640,11 @@ private:
 
                         
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(navigableVerticesMapInteger[current].y + distanceToObstacle_, distanceToObstacle_, decimals);
@@ -642,25 +663,43 @@ private:
                         new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode3 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode3 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key);   
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                         }
                         
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x - (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(navigableVerticesMapInteger[current].y - distanceToObstacle_, distanceToObstacle_, decimals);
@@ -679,16 +718,34 @@ private:
                         new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode4 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode4 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                          
                                 
@@ -697,11 +754,11 @@ private:
 
     
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
@@ -722,17 +779,35 @@ private:
                         
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                     
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode5 = false;
                         }
 
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode5 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                             
                         }
@@ -741,11 +816,11 @@ private:
 
 
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
@@ -767,26 +842,44 @@ private:
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                     
 
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode6 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {       
                             if(pode6 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }     
                             }
                         }
 
 
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x + distanceToObstacle_, distanceToObstacle_, decimals);
@@ -807,17 +900,35 @@ private:
                         
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                     
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode7 = false;
                         }
 
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {
                             if(pode7 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                             
                         }
@@ -826,11 +937,11 @@ private:
 
 
 
-                        new_x = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_y = roundToMultiple(navigableVerticesMapInteger[current].y - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_x2 = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(navigableVerticesMapInteger[current].y - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultipleFromBase(navigableVerticesMapInteger[current].z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                         
-                        index = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         
                         new_x = roundToMultiple(navigableVerticesMapInteger[current].x - distanceToObstacle_, distanceToObstacle_, decimals);
@@ -852,34 +963,42 @@ private:
                         index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                     
 
-                        if(navigableVerticesMap.find(index) == navigableVerticesMap.end() || navigableVerticesMap.find(index1) == navigableVerticesMap.end() || navigableVerticesMap.find(index2) == navigableVerticesMap.end() || navigableVerticesMap.find(index3) == navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                         {
                             pode8 = false;
                         }
 
-                        if(navigableVerticesMap.find(index) != navigableVerticesMap.end() && navigableVerticesMap.find(index1) != navigableVerticesMap.end() && navigableVerticesMap.find(index2) != navigableVerticesMap.end() && navigableVerticesMap.find(index3) != navigableVerticesMap.end())
+                        if(obstaclesVertices.find(index) == obstaclesVertices.end() && obstaclesVertices.find(index1) == obstaclesVertices.end() && obstaclesVertices.find(index2) == obstaclesVertices.end() && obstaclesVertices.find(index3) == obstaclesVertices.end())
                         {       
                             if(pode8 == true)
                             {
-                                adjacency_list[current].push_back(navigableVerticesMap[index].key); 
+                                if(navigableVerticesMap.find(index) == navigableVerticesMap.end())
+                                {
+                                    
+                                    navigableVerticesMap[index] = {k, new_x2, new_y2, new_z2};
+        
+                                    navigableVerticesMapInteger[navigableVerticesMap[index].key] = {k, new_x2, new_y2, new_z2};
+        
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+                                    
+                                    k++;
+                                    
+                                  
+                                }
+                                else
+                                {
+                                                            
+                                    adjacency_list[current].push_back(navigableVerticesMap[index].key);
+        
+                                }   
                             }
                         }
                         
 
-
-
                     }
+              
                     i++;
                 }
-
-              
-
-
-
-
-
-
-            
             }
 
             
@@ -896,7 +1015,7 @@ private:
             
             if (current == end_index) 
             {
-               
+                
                 return reconstructPath(came_from, current);
             } 
             
@@ -919,13 +1038,14 @@ private:
 
            
     
-                
+            
             adjacency_list.erase(current);
-        
-        
+            
+            
+            
         }
         
-
+      
         RCLCPP_WARN(this->get_logger(), "Não foi possível alcançar o destino.");
         return {};
     }
@@ -1108,14 +1228,10 @@ private:
             verticesDestino_.push_back(destino);
         }
         
-
          
         if(!verticesDestino_.empty())
         {
-             /*
-                O dz não será utilizado aqui AINDA, porque no momento eu estou usando
-            apenas o turtlebot3.
-            */
+        
             float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
             float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
             float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
@@ -1125,10 +1241,6 @@ private:
             if(distanciaAteODestino <= distanceToObstacle_)
             {
                 i_ = i_ + 1;
-               // adjacency_list.erase(navigableVerticesMap[globalGoalIndex].key);
-                navigableVerticesMapInteger.erase(navigableVerticesMap[globalGoalIndex].key);
-                navigableVerticesMap.erase(globalGoalIndex);
-            
             }
 
        
@@ -1139,25 +1251,17 @@ private:
             {
                 i_ = 0;
             }
-
             
-
             auto start_time_ = std::chrono::high_resolution_clock::now();
             std::vector<int> shortestPath = runAStar(array_inicial, array_final);
            
             storeEdgesInPath(shortestPath);
-
-            //adjacency_list.erase(navigableVerticesMap[globalIndex].key);            
-            navigableVerticesMapInteger.erase(navigableVerticesMap[globalIndex].key);
-            navigableVerticesMap.erase(globalIndex);
-
-            navigableVerticesMapInteger.erase(navigableVerticesMap[globalGoalIndex].key);
-            navigableVerticesMap.erase(globalGoalIndex);
-            
            
             auto end_time = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<float> duration = end_time - start_time_;        
-            
+            std::chrono::duration<float> duration = end_time - start_time_;  
+            adjacency_list.clear();
+            navigableVerticesMap.clear();    
+            navigableVerticesMapInteger.clear();
             RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
        
         }
@@ -1182,12 +1286,11 @@ private:
                 roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
             );
 
-            if (navigableVerticesMap.find(index) != navigableVerticesMap.end()) 
-            {
-                navigableVerticesMapInteger.erase(navigableVerticesMap[index].key);
-                navigableVerticesMap.erase(index);
-            }
+            obstaclesVertices.insert(index);
+            
         }
+       
+        
     }
 
    
@@ -1197,8 +1300,6 @@ private:
         pose_x_ = msg->pose.pose.position.x;
         pose_y_ = msg->pose.pose.position.y;
         pose_z_ = msg->pose.pose.position.z;
-
-     
     }
 
 
@@ -1208,12 +1309,7 @@ private:
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        auto new_x_min = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        auto new_x_max = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        auto new_y_min = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        auto new_y_max = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        auto new_z_min = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        auto new_z_max = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
+   
         
         
         if (new_distanceToObstacle != distanceToObstacle_) 
@@ -1222,9 +1318,9 @@ private:
             resolution_ = 1;
             std::cout << "\n" << std::endl;
             RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
-            RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");
-            createGraph();           
+            RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          
         }
+
         if(new_diagonalEdges != diagonalEdges_)
         {
             diagonalEdges_ = new_diagonalEdges;
@@ -1232,51 +1328,9 @@ private:
             std::cout << "\n" << std::endl;
 
             RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
-            createGraph();
         }
        
-        if (new_x_min != x_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            x_min_ = new_x_min;
-            RCLCPP_INFO(this->get_logger(), "Updated x_min: %.2f", x_min_);
-            createGraph();
-        }
-        if (new_x_max != x_max_) 
-        {
-            std::cout << "\n" << std::endl;
-            x_max_ = new_x_max;
-            RCLCPP_INFO(this->get_logger(), "Updated x_max: %.2f", x_max_);
-            createGraph();
-        }
-        if (new_y_min != y_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            y_min_ = new_y_min;
-            RCLCPP_INFO(this->get_logger(), "Updated y_min: %.2f", y_min_);
-            createGraph();
-        }
-        if (new_y_max != y_max_) 
-        {
-            std::cout << "\n" << std::endl;
-           y_max_ = new_y_max;
-            RCLCPP_INFO(this->get_logger(), "Updated y_max: %.2f", y_max_);
-            createGraph();
-        }        
-        if (new_z_min != z_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            z_min_ = new_z_min;
-            RCLCPP_INFO(this->get_logger(), "Updated z_min: %.2f", z_min_);
-            createGraph();
-        }
-        if (new_z_max != z_max_) 
-        {
-            std::cout << "\n" << std::endl;
-            z_max_ = new_z_max;
-            RCLCPP_INFO(this->get_logger(), "Updated z_max: %.2f", z_max_);
-            createGraph();
-        }
+        
 
       
     }
@@ -1290,33 +1344,19 @@ public:
      
         this->declare_parameter<double>("distanceToObstacle", 0.05);
         this->declare_parameter<int>("diagonalEdges", 1);
-        this->declare_parameter<double>("x_min", -10.0);
-        this->declare_parameter<double>("x_max", 10.0);
-        this->declare_parameter<double>("y_min", -10.0);
-        this->declare_parameter<double>("y_max", 10.0);
-        this->declare_parameter<double>("z_min", 0.2);
-        this->declare_parameter<double>("z_max", 0.2);
+
 
         // Initialize parameters 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        x_min_ = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        x_max_ = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        y_min_ = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        y_max_ = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        z_min_ = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        z_max_ = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
+
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
-        RCLCPP_INFO(this->get_logger(), "Resolution is set to: %0.f", resolution_);
-        RCLCPP_INFO(this->get_logger(), "Updated x_min: %f", x_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated x_max: %f", x_max_);
-        RCLCPP_INFO(this->get_logger(), "Updated y_min: %f", y_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated y_max: %f", y_max_);
-        RCLCPP_INFO(this->get_logger(), "Updated z_min: %f", z_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated z_max: %f", z_max_);
 
+        parameterTimer = this->create_wall_timer(
+            std::chrono::seconds(2),
+            std::bind(&AStar::check_parameters, this));
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
@@ -1326,7 +1366,7 @@ public:
        
  
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/removed_navigable_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+            "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
         publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
         timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&AStar::publisher_dijkstra_path, this));
@@ -1342,7 +1382,7 @@ public:
             "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
 
 
-        createGraph();
+       
     }
 };
 
