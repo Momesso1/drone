@@ -55,10 +55,8 @@ class GraphPublisher : public rclcpp::Node {
 private:
     struct Vertex 
     {
-        std::tuple<float, float, float> key;
         float x, y, z;
-        bool up;
-        bool down;
+    
     };
 
     struct VertexPointCloud 
@@ -68,19 +66,12 @@ private:
 
     struct CloudMapPoint
     {
-        std::tuple<float, float, float> key;
         float x, y, z;
         bool verified;
         bool artificial;
-        bool up;
-        bool down;
+     
     };
 
-    struct CloudMapHigherLower
-    {
-        std::tuple<float, float, float> key;
-        float z;
-    };
 
     struct Edge 
     {
@@ -118,14 +109,8 @@ private:
     bool fixedFrames_;
     int decimals = 0;
 
-    std::unordered_map<std::tuple<float, float>, CloudMapHigherLower> lowerCloudMapPointXY;
-    std::unordered_map<std::tuple<float, float>, CloudMapHigherLower> higherCloudMapPointXY;
-    std::unordered_map<std::tuple<float, float, float>, Vertex> publishedFixedVertices;
-    std::unordered_map<std::tuple<float, float, float>, Vertex> fixedVertices;
-    std::unordered_map<std::tuple<float, float, float>, Vertex> publishedVerticesArbitrary;
     std::unordered_map<std::tuple<float, float, float>, Vertex> verticesArbitrary;
     std::unordered_map<std::tuple<float, float, float>, CloudMapPoint> verticesCloudMap;
-    std::unordered_map<std::tuple<float, float, float>, CloudMapPoint> receivedCloudMap;
 
     float roundToDecimal(float value, int decimal_places) 
     {
@@ -176,14 +161,15 @@ private:
                 int opa = 0, opa2 = 0;
                 float new_x, new_y, new_z = 0.0;
         
-                if(maxSecurityHeightDistance_ >= maxSecurityDistance_ + fixedNavigableVertices_)
+                if(maxSecurityHeightDistance_ >= maxSecurityDistance_)
                 {
                     maxToma = maxSecurityHeightDistance_;
                 }
                 else
                 {
-                    maxToma = maxSecurityDistance_ + fixedNavigableVertices_;
+                    maxToma = maxSecurityDistance_;
                 }
+              
 
                 while(toma <= maxToma)
                 {
@@ -195,14 +181,11 @@ private:
                         new_z = roundToMultiple(it->second.z + toma, distanceToObstacle_, decimals);
                         auto index5 = std::make_tuple(new_x, new_y, new_z);
 
-                        if ( maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end() )
+                        if (verticesCloudMap.find(index5) == verticesCloudMap.end() )
                         {
-                            verticesCloudMap[index5] = {index5, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, false};
+                            verticesCloudMap[index5] = {static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true};
                         }
-                        else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index5) == verticesCloudMap.end())
-                        {
-                            verticesCloudMap[index5] = {index5, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, true, false};
-                        }
+                        
                             
                     }
 
@@ -213,14 +196,11 @@ private:
                         new_z = roundToMultiple(it->second.z - toma, distanceToObstacle_, decimals);
                         auto index6 = std::make_tuple(new_x, new_y, new_z);
 
-                        if (maxSecurityHeightDistance_ - toma >= distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
+                        if (verticesCloudMap.find(index6) == verticesCloudMap.end())
                         {
-                            verticesCloudMap[index6] = {index6, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, false};
+                            verticesCloudMap[index6] = {static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true};
                         }
-                        else if(maxSecurityHeightDistance_ - toma < distanceToObstacle_ && verticesCloudMap.find(index6) == verticesCloudMap.end())
-                        {
-                            verticesCloudMap[index6] = {index6, static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z), false, true, false, true};
-                        }
+                       
                     }
 
                     if(toma <= maxSecurityDistance_)
@@ -235,63 +215,21 @@ private:
                             auto index12 = std::make_tuple((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z);
                             auto index13 = std::make_tuple((it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z);
                             
-                            if(it->second.artificial == true && it->second.up == true)
-                            {
-                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, true, false};
+                        
+                            verticesArbitrary[index10] = {(it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z};
 
-                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, true, false};
+                            verticesArbitrary[index11] = {(it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z};
 
-                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, true, false};
+                            verticesArbitrary[index12] = {(it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z};
 
-                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, true, false};
-                            }
-                            else if(it->second.artificial == true && it->second.down == false)
-                            {
-                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, false, true};
-
-                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, false, true};
-
-                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, false, true};
-
-                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, false, true};
-                            }
-                            else
-                            {
-                                verticesArbitrary[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita), (it->second.y + toma), it->second.z, false, false};
-
-                                verticesArbitrary[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z, false, false};
-
-                                verticesArbitrary[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z, false, false};
-
-                                verticesArbitrary[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z, false, false};
-                            }
+                            verticesArbitrary[index13] = {(it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z};
+                        
                             
                         }
 
                         opa++;
                     }
-                    else if(toma > maxSecurityDistance_ && fixedFrames_ == true)
-                    {
-                        
-
-
-                        for(int eita2 = 0; eita2 <= (opa2 * 2) + (opa * 2); eita2++)
-                        {         
-                            auto index10 = std::make_tuple((it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z);
-                            auto index11 = std::make_tuple((it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z);
-
-                            auto index12 = std::make_tuple((it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z);
-                            auto index13 = std::make_tuple((it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z);
-
-                            fixedVertices[index10] = {index10, (it->second.x + toma) - (distanceToObstacle_ * eita2), (it->second.y + toma), it->second.z, false, false};
-                            fixedVertices[index11] = {index11, (it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita2), it->second.z, false, false};
-                            
-                            fixedVertices[index12] = {index12, (it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita2), it->second.z, false, false};           
-                            fixedVertices[index13] = {index13, (it->second.x - toma) + (distanceToObstacle_ * eita2), (it->second.y - toma), it->second.z, false, false};
-                        }
-
-                        opa2++;
-                    }
+                   
                 
     
                     toma += distanceToObstacle_;
@@ -394,15 +332,15 @@ private:
 
             if(verticesCloudMap.find(index1) == verticesCloudMap.end())
             {
-                verticesCloudMap[index1] = {index1, x1, y1, z1, false, false, false, false};
-                verticesArbitrary[index1] = {index1, x1, y1 ,z1, false, false};
+                verticesCloudMap[index1] = {x1, y1, z1, false, false};
+                verticesArbitrary[index1] = {x1, y1 ,z1};
             }
             
             if(verticesCloudMap[index1].artificial == true)
             {
                 
-                verticesCloudMap[index1] = {index1, x1, y1, z1, false, false, false, false};
-                verticesArbitrary[index1] = {index1, x1, y1, z1, false, false};
+                verticesCloudMap[index1] = {x1, y1, z1, false, false};
+                verticesArbitrary[index1] = {x1, y1, z1};
             }
             
             

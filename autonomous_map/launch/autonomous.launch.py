@@ -13,12 +13,9 @@ def generate_launch_description():
     # Definindo os parâmetros a serem usados nos nós
     parameters = [{
         "distanceToObstacle": 0.2,
-        "diagonalEdges": 3,
-        "maxSecurityDistance": 0.3,
-        "maxSecurityHeightDistance": 0.3,
-        "fixedNavigableVertices": False,
-        "fixedNavigableVerticesDistance": 0.25,
-        #"use_3d": True,
+        "diagonalEdges": 4,
+        "maxSecurityDistance": 0.2,
+        "maxSecurityHeightDistance": 0.2,
     }]
 
   
@@ -49,12 +46,6 @@ def generate_launch_description():
         ),
 
        
-        Node(
-            package='autonomous_map',
-            executable='navigable_graph',
-            output='screen',
-            parameters=parameters,
-        ),
 
     
 
