@@ -17,8 +17,6 @@
 #include <queue>
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
-#include "subdrone_interfaces/msg/passar_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_array_vertices.hpp"
 #include <cmath>
 #include <limits>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -93,8 +91,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer1_;
 
     // Publishers
-    rclcpp::Publisher<subdrone_interfaces::msg::PassarArrayVertices>::SharedPtr publisher_;
-    rclcpp::Publisher<subdrone_interfaces::msg::PassarArrayVertices>::SharedPtr publisher_fixed_vertices;
+ 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_vertices_arbitrary;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher121_;
     size_t count_;

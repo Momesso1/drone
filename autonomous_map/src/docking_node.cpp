@@ -23,8 +23,6 @@
 #include <queue>
 #include "rclcpp/rclcpp.hpp"
 #include <nav_msgs/msg/odometry.hpp>
-#include "subdrone_interfaces/msg/passar_vertices.hpp"
-#include "subdrone_interfaces/msg/passar_array_vertices.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cmath>
