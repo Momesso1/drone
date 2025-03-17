@@ -186,7 +186,6 @@ private:
     std::unordered_map<int, std::vector<int>> adjacency_list;
     //std::unordered_map<int, std::unordered_set<std::pair<int, int>, PairHash>> adjacency_list;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
-    std::unordered_map<std::tuple<float, float, float>, Vertex> navigableVerticesMap;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
     inline float roundToMultiple(float value, float multiple, int decimals) {
@@ -282,7 +281,7 @@ private:
     {
         destinationEdges.clear();
         
-        // Node structure to consolidate data
+        
         struct Node {
             std::tuple<float, float, float> parent;
             float g_score = std::numeric_limits<float>::infinity();
@@ -290,10 +289,9 @@ private:
             bool closed = false;
         };
         
-        // Single map to store all node data
+        
         std::unordered_map<std::tuple<float, float, float>, Node> nodes;
         
-        // Still need adjacency list to store graph connectivity
         std::unordered_map<std::tuple<float, float, float>, std::vector<std::tuple<float, float, float>>> adjacency_list_tuples;
         
         auto offsets1 = getOffsets(distanceToObstacle_);
@@ -362,7 +360,6 @@ private:
             return {};
         }
         
-        // Heuristic function
         auto heuristic = [](const std::tuple<float, float, float>& a, const std::tuple<float, float, float>& b) {
             float x1 = std::get<0>(a);
             float y1 = std::get<1>(a);
@@ -375,11 +372,9 @@ private:
             return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2) + std::pow(z2 - z1, 2));
         };
         
-        // Initialize start node
         nodes[start_tuple].g_score = 0;
         nodes[start_tuple].f_score = heuristic(start_tuple, goal_tuple);
         
-        // Priority queue comparator
         struct TupleCompare {
             bool operator()(const std::pair<float, std::tuple<float, float, float>>& a, 
                             const std::pair<float, std::tuple<float, float, float>>& b) const {
@@ -387,7 +382,6 @@ private:
             }
         };
         
-        // Priority queue for open set
         std::priority_queue<
             std::pair<float, std::tuple<float, float, float>>,
             std::vector<std::pair<float, std::tuple<float, float, float>>>,
@@ -402,18 +396,14 @@ private:
             open_set.pop();
             auto current = current_pair.second;
             
-            // Skip if node is already closed
             if (nodes[current].closed)
                 continue;
                 
-            // Skip outdated entries in priority queue
             if (current_pair.first > nodes[current].f_score)
                 continue;
                 
-            // Mark as closed
             nodes[current].closed = true;
             
-            // Expand more neighbors if not start or goal
             if (current != start_tuple && current != goal_tuple)
             {
                 for (int a = 0; a < 26; a++) 
@@ -780,10 +770,8 @@ private:
 
             }
             
-            // Goal check
             if (current == goal_tuple) 
             {
-                // Reconstruct path
                 std::vector<std::tuple<float, float, float>> path;
                 auto current_vertex = current;
                 
@@ -798,7 +786,7 @@ private:
                 return path;
             }
             
-            // Process neighbors
+           
             for (const auto& neighbor : adjacency_list_tuples[current])
             {
                 if (nodes.find(neighbor) != nodes.end() && nodes[neighbor].closed)
@@ -815,11 +803,10 @@ private:
                 }
             }
             
-            // Remove current node from adjacency list to free memory
             adjacency_list_tuples.erase(current);
         }
         
-        RCLCPP_WARN(this->get_logger(), "Não foi possível alcançar o destino.");
+        RCLCPP_WARN(this->get_logger(), "It is not possible to reach the destination.");
         return {};
     }
 
@@ -1029,7 +1016,9 @@ private:
            
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;  
+
             adjacency_list.clear();
+
             RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
        
         }
