@@ -288,60 +288,150 @@ private:
     std::unordered_map<int, std::vector<int>> adjacency_list;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
+    std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>,  PairHashTuple> startToEnd;
 
 
-   
-    bool saveMapToBinaryFile(const std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>,  PairHashTuple> map, const std::string& filename) 
+    bool saveMapToBinaryFile(const std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>, PairHashTuple>& map, const std::string& filename)
     {
+        // Verificar se o mapa está vazio
+        if (map.empty()) {
+            std::cerr << "Erro: O mapa está vazio" << std::endl;
+            return false;
+        }
+
+        // Abrir o arquivo com verificação explícita
         std::fstream file(filename, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!file) {
+        if (!file.is_open()) {
             std::cerr << "Erro ao abrir o arquivo para escrita: " << filename << std::endl;
             return false;
         }
+
+        // Verificar permissões de escrita
+        file << "test";
+        if (file.fail()) {
+            std::cerr << "Erro: Não foi possível escrever no arquivo. Verifique as permissões." << std::endl;
+            file.close();
+            return false;
+        }
         
-        uint32_t hashTableSize = recommendedHashTableSize(map.size());
+        // Reiniciar o arquivo
+        file.close();
+        file.open(filename, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
+        if (!file.is_open()) {
+            std::cerr << "Erro ao reabrir o arquivo: " << filename << std::endl;
+            return false;
+        }
         
+        // Calcular o tamanho da tabela hash
+        uint32_t hashTableSize = recommendedHashTableSize(map.size() * 2); // Dobrar o tamanho para evitar colisões
+        // std::cout << "Tamanho da tabela hash: " << hashTableSize << std::endl;
+        // std::cout << "Número de entradas no mapa: " << map.size() << std::endl;
+        
+        // Escrever o cabeçalho do arquivo
         FileHeader header;
         header.hashTableSize = hashTableSize;
         header.numEntries = map.size();
         header.dataStartOffset = sizeof(FileHeader) + hashTableSize * sizeof(HashEntry);
-        
         file.write(reinterpret_cast<char*>(&header), sizeof(FileHeader));
         
-        HashEntry emptyEntry = {false, 0, 0, 0, 0, 0, 0, 0, 0};
-        for (uint32_t i = 0; i < hashTableSize; ++i) {
-            file.write(reinterpret_cast<const char*>(&emptyEntry), sizeof(HashEntry));
+        if (file.fail()) {
+            std::cerr << "Erro ao escrever o cabeçalho" << std::endl;
+            file.close();
+            return false;
         }
         
-        uint32_t currentDataOffset = header.dataStartOffset;
-        
-        for (const auto& pair : map) {
-            uint32_t address = hashAddress(pair.first, hashTableSize);
-            uint32_t originalAddress = address;
-            
-            HashEntry entry;
-            bool positionFound = false;
-            
-            while (!positionFound) {
-                file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry));
-                file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-                
-                if (!entry.occupied) {
-                    positionFound = true;
-                } else {
-                    address = (address + 1) % hashTableSize;
-                    if (address == originalAddress) {
-                        std::cerr << "Erro: Tabela hash no arquivo está cheia" << std::endl;
-                        file.close();
-                        return false;
-                    }
-                }
+        // Inicializar a tabela hash com entradas vazias
+        HashEntry emptyEntry = {false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0};
+        for (uint32_t i = 0; i < hashTableSize; ++i) {
+            file.write(reinterpret_cast<const char*>(&emptyEntry), sizeof(HashEntry));
+            if (file.fail()) {
+                std::cerr << "Erro ao escrever a entrada vazia #" << i << std::endl;
+                file.close();
+                return false;
             }
+        }
+        
+        // Verificar a posição atual do arquivo
+        std::streampos expectedOffset = sizeof(FileHeader) + hashTableSize * sizeof(HashEntry);
+        if (file.tellp() != expectedOffset) {
+            std::cerr << "Erro: Offset inesperado após escrever entradas vazias. Esperado: " 
+                    << expectedOffset << ", Atual: " << file.tellp() << std::endl;
+            file.close();
+            return false;
+        }
+        
+        // Posição atual no arquivo onde os dados começarão a ser escritos
+        uint32_t currentDataOffset = header.dataStartOffset;
+        // std::cout << "Offset inicial de dados: " << currentDataOffset << std::endl;
+        
+        // Variável para contar colisões
+        int collisionCount = 0;
+        
+        // Cria um arquivo de texto adicional para armazenar as chaves formatadas com espaço após as vírgulas
+        std::ofstream formattedKeysFile(filename + ".txt");
+        if (!formattedKeysFile.is_open()) {
+            // std::cerr << "Aviso: Não foi possível criar o arquivo de texto para chaves formatadas" << std::endl;
+            // Continuar mesmo assim, pois este é apenas um arquivo auxiliar
+        }
+        
+        // Processar todas as entradas do mapa
+        int entryCount = 0;
+        for (const auto& pair : map) {
+            entryCount++;
+            // std::cout << "Processando entrada #" << entryCount << "/" << map.size() << std::endl;
             
+            // Calcular o endereço hash para esta chave
+            // Dentro do loop que processa cada entrada do map:
+uint32_t originalAddress = hashAddress(pair.first, hashTableSize);
+uint32_t address = originalAddress;
+bool positionFound = false;
+int probeCount = 0;
+HashEntry entry;
+
+while (!positionFound && probeCount < hashTableSize) {
+    // Posicionar o ponteiro para ler a entrada na posição calculada
+    file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
+    if (file.fail()) {
+        std::cerr << "Erro ao posicionar o ponteiro para leitura no endereço " << address << std::endl;
+        file.close();
+        formattedKeysFile.close();
+        return false;
+    }
+    
+    file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
+    if (file.fail()) {
+        std::cerr << "Erro ao ler a entrada no endereço " << address << std::endl;
+        file.close();
+        formattedKeysFile.close();
+        return false;
+    }
+    
+    if (!entry.occupied) {
+        positionFound = true;
+        // std::cout << "Posição livre encontrada no endereço " << address << std::endl;
+        break;
+    } else {
+        collisionCount++;
+        probeCount++;
+        // Sondagem quadrática: o deslocamento é o quadrado do número de tentativas
+        address = (originalAddress + probeCount * probeCount) % hashTableSize;
+        // std::cout << "Colisão detectada. Tentativa " << probeCount 
+        //           << ", novo endereço: " << address << std::endl;
+    }
+}
+
+            if (!positionFound) {
+                std::cerr << "Erro: Não foi possível encontrar uma posição livre após " 
+                        << probeCount << " tentativas" << std::endl;
+                file.close();
+                formattedKeysFile.close();
+                return false;
+            }
+                        
+            // Preencher os dados da entrada
             entry.occupied = true;
             auto [key_first_x, key_first_y, key_first_z] = pair.first.first;
             auto [key_second_x, key_second_y, key_second_z] = pair.first.second;
-            
             entry.key_first_x = key_first_x;
             entry.key_first_y = key_first_y;
             entry.key_first_z = key_first_z;
@@ -350,122 +440,144 @@ private:
             entry.key_second_z = key_second_z;
             entry.dataOffset = currentDataOffset;
             
-            file.seekp(currentDataOffset);
+            // Exibir os dados no console com espaços após as vírgulas
+            // std::cout << "Dados da chave: (" 
+            //         << key_first_x << ", " << key_first_y << ", " << key_first_z << ") -> ("
+            //         << key_second_x << ", " << key_second_y << ", " << key_second_z << ")" << std::endl;
+            // std::cout << "Offset de dados: " << currentDataOffset << std::endl;
             
+            // Salvar os dados formatados no arquivo de texto auxiliar
+            if (formattedKeysFile.is_open()) {
+                formattedKeysFile << "Índice: " << address << ", Chave: (" 
+                    << key_first_x << ", " << key_first_y << ", " << key_first_z << ") -> ("
+                    << key_second_x << ", " << key_second_y << ", " << key_second_z << ")" << std::endl;
+                
+                formattedKeysFile << "  Offset: " << currentDataOffset 
+                    << ", Pontos: " << pair.second.size() << std::endl;
+                
+                // Também podemos salvar os pontos no arquivo de texto
+                int pointIndex = 0;
+                for (const auto& point : pair.second) {
+                    float x, y, z;
+                    std::tie(x, y, z) = point;
+                    formattedKeysFile << "    Ponto " << pointIndex++ << ": (" 
+                        << x << ", " << y << ", " << z << ")" << std::endl;
+                }
+                // formattedKeysFile << "  ------------------------------" << std::endl;
+            }
+            
+            // Posicionar o ponteiro de escrita no offset de dados correto
+            file.seekp(currentDataOffset, std::ios::beg);
+            if (file.fail()) {
+                // std::cerr << "Erro ao posicionar o ponteiro para escrita no offset " << currentDataOffset << std::endl;
+                file.close();
+                formattedKeysFile.close();
+                return false;
+            }
+            
+            // Escrever o tamanho do vetor
             uint32_t vectorSize = pair.second.size();
             file.write(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
+            if (file.fail()) {
+                // std::cerr << "Erro ao escrever o tamanho do vetor: " << vectorSize << std::endl;
+                file.close();
+                formattedKeysFile.close();
+                return false;
+            }
             
+            // std::cout << "Tamanho do vetor: " << vectorSize << " pontos" << std::endl;
+            
+            // Escrever cada ponto no vetor
             for (const auto& point : pair.second) {
                 float x, y, z;
                 std::tie(x, y, z) = point;
                 file.write(reinterpret_cast<const char*>(&x), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&y), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&z), sizeof(float));
+                
+                if (file.fail()) {
+                    // std::cerr << "Erro ao escrever o ponto (" << x << ", " << y << ", " << z << ")" << std::endl;
+                    file.close();
+                    formattedKeysFile.close();
+                    return false;
+                }
             }
             
+            // Calcular o tamanho total dos dados para esta entrada
             entry.dataSize = sizeof(uint32_t) + vectorSize * (3 * sizeof(float));
             currentDataOffset += entry.dataSize;
             
-            file.seekp(sizeof(FileHeader) + address * sizeof(HashEntry));
+            // std::cout << "Tamanho dos dados: " << entry.dataSize << " bytes" << std::endl;
+            // std::cout << "Próximo offset de dados: " << currentDataOffset << std::endl;
+            
+            // Escrever a entrada atualizada na tabela hash
+            file.seekp(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
+            if (file.fail()) {
+                // std::cerr << "Erro ao posicionar o ponteiro para escrita na tabela hash, endereço " << address << std::endl;
+                file.close();
+                formattedKeysFile.close();
+                return false;
+            }
+            
             file.write(reinterpret_cast<const char*>(&entry), sizeof(HashEntry));
+            if (file.fail()) {
+                // std::cerr << "Erro ao escrever a entrada na tabela hash" << std::endl;
+                file.close();
+                formattedKeysFile.close();
+                return false;
+            }
+            
+            // std::cout << "Entrada #" << entryCount << " gravada com sucesso" << std::endl;
+            // std::cout << "------------------------------" << std::endl;
+        }
+        
+        // Fechar o arquivo de texto formatado
+        if (formattedKeysFile.is_open()) {
+            formattedKeysFile.close();
+        }
+        
+        // Forçar a gravação em disco
+        file.flush();
+        
+        // Verificar o tamanho final do arquivo
+        file.seekp(0, std::ios::end);
+        std::streampos fileSize = file.tellp();
+        // std::cout << "Tamanho final do arquivo: " << fileSize << " bytes" << std::endl;
+        
+        if (fileSize == 0 || fileSize < currentDataOffset) {
+            // std::cerr << "Erro: Tamanho do arquivo inconsistente" << std::endl;
+            file.close();
+            return false;
         }
         
         file.close();
+        
+        // Verificar se o arquivo existe e tem o tamanho esperado
+        std::ifstream checkFile(filename, std::ios::binary);
+        if (!checkFile.is_open()) {
+            // std::cerr << "Erro: Não foi possível abrir o arquivo para verificação" << std::endl;
+            return false;
+        }
+        
+        checkFile.seekg(0, std::ios::end);
+        std::streampos checkSize = checkFile.tellg();
+        checkFile.close();
+        
+        // std::cout << "Verificação final do arquivo: " << checkSize << " bytes" << std::endl;
+        
+        if (checkSize == 0) {
+            std::cerr << "Erro: O arquivo está vazio após a gravação" << std::endl;
+            return false;
+        }
+        
+        std::cout << "Arquivo salvo com sucesso: " << filename << std::endl;
+        std::cout << "Entradas gravadas: " << entryCount << " de " << map.size() << std::endl;
+        std::cout << "Arquivo de texto com chaves formatadas: " << filename << ".txt" << std::endl;
+        
         return true;
     }
 
-    PointVector loadVectorByKey(const std::string& filename, const KeyPair& key) {
-        std::ifstream file(filename, std::ios::binary);
-        if (!file) {
-            std::cerr << "Erro ao abrir o arquivo para leitura: " << filename << std::endl;
-            return {};
-        }
         
-        FileHeader header;
-        file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
-        
-        uint32_t address = hashAddress(key, header.hashTableSize);
-        uint32_t originalAddress = address;
-        
-        while (true) {
-            file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry));
-            
-            HashEntry entry;
-            file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-            
-            if (!entry.occupied) {
-                file.close();
-                return {};
-            }
-            
-            Point3D first(entry.key_first_x, entry.key_first_y, entry.key_first_z);
-            Point3D second(entry.key_second_x, entry.key_second_y, entry.key_second_z);
-            KeyPair fileKey(first, second);
-            
-            if (fileKey == key) {
-                file.seekg(entry.dataOffset);
-                
-                uint32_t vectorSize;
-                file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
-                
-                PointVector result;
-                result.reserve(vectorSize);  
-                
-                for (uint32_t i = 0; i < vectorSize; ++i) {
-                    float x, y, z;
-                    file.read(reinterpret_cast<char*>(&x), sizeof(float));
-                    file.read(reinterpret_cast<char*>(&y), sizeof(float));
-                    file.read(reinterpret_cast<char*>(&z), sizeof(float));
-                    
-                    result.emplace_back(x, y, z);
-                }
-                
-                file.close();
-                return result;
-            }
-            
-            address = (address + 1) % header.hashTableSize;
-            
-            if (address == originalAddress) {
-                break;
-            }
-        }
-        
-        file.close();
-        return {}; 
-    }
-
-    void viewHashTable(const std::string& filename) 
-    {
-        std::ifstream file(filename, std::ios::binary);
-        if (!file) {
-            std::cerr << "Erro ao abrir o arquivo: " << filename << std::endl;
-            return;
-        }
-        
-        FileHeader header;
-        file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
-        
-        std::cout << "Tamanho da tabela hash: " << header.hashTableSize << std::endl;
-        std::cout << "Número de entradas: " << header.numEntries << std::endl;
-        std::cout << "Início dos dados: " << header.dataStartOffset << std::endl;
-        
-        for (uint32_t i = 0; i < header.hashTableSize; ++i) {
-            HashEntry entry;
-            file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-            
-            if (entry.occupied) {
-                std::cout << "Posição " << i << ": ";
-                std::cout << "Chave: ((" 
-                        << entry.key_first_x << ", " << entry.key_first_y << ", " << entry.key_first_z << "), ("
-                        << entry.key_second_x << ", " << entry.key_second_y << ", " << entry.key_second_z << ")) ";
-                std::cout << "Dados em: " << entry.dataOffset << " (tamanho: " << entry.dataSize << ")" << std::endl;
-            }
-        }
-        
-        file.close();
-    }
-
 
 
 
@@ -533,6 +645,31 @@ private:
         file.close();
         return exists;
     }
+
+    // std::unordered_set<std::tuple<float, float, float>> loadVerticesFromFile(const std::string& filename) 
+    // {
+        
+    //     std::ifstream file(filename, std::ios::binary);
+    //     if (!file.is_open()) {
+    //         std::cerr << "Erro ao abrir o arquivo para leitura: " << filename << std::endl;
+            
+    //     }
+        
+    //     // Lê o número de tuplas salvas
+    //     size_t count = 0;
+    //     file.read(reinterpret_cast<char*>(&count), sizeof(count));
+        
+    //     // Para cada tupla, lê os três floats e insere no unordered_set
+    //     for (size_t i = 0; i < count; ++i) {
+    //         float x, y, z;
+    //         file.read(reinterpret_cast<char*>(&x), sizeof(x));
+    //         file.read(reinterpret_cast<char*>(&y), sizeof(y));
+    //         file.read(reinterpret_cast<char*>(&z), sizeof(z));
+    //         obstaclesVertices.emplace(std::make_tuple(x, y, z));
+    //     }
+        
+    //     file.close();
+    // }
         
 
     
@@ -585,20 +722,126 @@ private:
 
         };
     }
-    
+
+    void trainAStar()
+    {
+        const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths2.bin";
+        std::cout << "opa" << std::endl;
+        auto start_time_ = std::chrono::high_resolution_clock::now();
+
+        float new_x, new_y, new_z = 0.0;
+        float new_x1, new_y1, new_z1 = 0.0;
+            
+        for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) 
+        {
+            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) 
+            {
+                for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) 
+                {
+                    auto start_time1_ = std::chrono::high_resolution_clock::now();
+                    new_x = roundToMultiple(x, distanceToObstacle_, decimals);
+                    new_y = roundToMultiple(y, distanceToObstacle_, decimals);
+                    new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
+
+                    auto index = std::make_tuple(static_cast<float>(new_x), 
+                        static_cast<float>(new_y), 
+                        static_cast<float>(new_z));
+
+                    if(new_x == 0)
+                    {
+                        new_x = std::abs(new_x);
+                    }
+
+                    if(new_y == 0)
+                    {
+                        new_y = std::abs(new_y);
+                    }
+
+                    if(new_z == 0)
+                    {
+                        new_z = std::abs(new_z);
+                    }
+
+                    if (obstaclesVertices.find(index) == obstaclesVertices.end())
+                    {
+                        
+                        for (float z1 = z_min_; z1 <= z_max_; z1 += distanceToObstacle_) 
+                        {
+                            for (float y1 = y_min_; y1 <= y_max_; y1 += distanceToObstacle_) 
+                            {
+                                for (float x1 = x_min_; x1 <= x_max_; x1 += distanceToObstacle_) 
+                                {
+                                    new_x1 = roundToMultiple(x1, distanceToObstacle_, decimals);
+                                    new_y1 = roundToMultiple(y1, distanceToObstacle_, decimals);
+                                    new_z1 = roundToMultipleFromBase(z1, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
+
+                                    auto index1 = std::make_tuple(static_cast<float>(new_x1), static_cast<float>(new_y1), static_cast<float>(new_z1));
+
+                                  
+                                    
+                                    if(new_x1 == 0)
+                                    {
+                                        new_x1 = std::abs(new_x1);
+                                    }
+
+                                    if(new_y1 == 0)
+                                    {
+                                        new_y1 = std::abs(new_y1);
+                                    }
+
+                                    if(new_z1 == 0)
+                                    {
+                                        new_z1 = std::abs(new_z1);
+                                    }
+
+
+                                    if (obstaclesVertices.find(index1) == obstaclesVertices.end())
+                                    {
+                                        float array_inicial[3] = {new_x, new_y, new_z};
+                                        float array_final[3] = {new_x1, new_y1, new_z1};
+                                        
+
+
+                                        std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
+           
+                                        storeEdgesInPath(shortestPath);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    auto end_time1 = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration1 = end_time1 - start_time1_;
+
+                    std::cout << "A* execution time: " << duration1.count() << " seconds" << std::endl;
+                    
+                }
+                
+            }
+
+        }
+
+        
+        saveMapToBinaryFile(startToEnd, filename);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration = end_time - start_time_;
+        std::cout << "A* FINAL execution time: " << duration.count() << " seconds" << std::endl;
+
+    }
+
     std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
     {
         destinationEdges.clear();
         
-        const std::string filename = "/home/momesso/autonomous/src/map/config/obstacles.bin";
-
-
+        
         struct Node {
             std::tuple<float, float, float> parent;
             float g_score = std::numeric_limits<float>::infinity();
             float f_score = std::numeric_limits<float>::infinity();
             bool closed = false;
         };
+        
         
         std::unordered_map<std::tuple<float, float, float>, Node> nodes;
         
@@ -611,11 +854,9 @@ private:
         
         float new_x = 0.0, new_y = 0.0, new_z = 0.0;
         bool findNavigableVertice = false;
-
-        
         
         // Find navigable vertices near start
-        for(int i = 1; i <= 3; i++)
+        for(int i = 1; i <= 2; i++)
         {
             for (int a = 0; a < 26; a++) 
             {
@@ -628,15 +869,13 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if(!indexExistsInFile(filename, neighbor_tuple))
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                 { 
                     adjacency_list_tuples[start_tuple].push_back(neighbor_tuple);
                     findNavigableVertice = true;
                 }
             }
         }
-
-        
         
         if(findNavigableVertice == false) 
         {
@@ -656,13 +895,13 @@ private:
                 new_z = roundToMultipleFromBase(std::get<2>(goal_tuple) + (offsets1[a][2] * i),
                     roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
                 
-                auto neighbor_tuple1 = std::make_tuple(static_cast<float>(new_x), 
+                auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if(!indexExistsInFile(filename, neighbor_tuple1))
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                 { 
-                    adjacency_list_tuples[neighbor_tuple1].push_back(goal_tuple);
+                    adjacency_list_tuples[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
                 }
             }
@@ -689,7 +928,13 @@ private:
         nodes[start_tuple].g_score = 0;
         nodes[start_tuple].f_score = heuristic(start_tuple, goal_tuple);
         
-       
+        struct TupleCompare {
+            bool operator()(const std::pair<float, std::tuple<float, float, float>>& a, 
+                            const std::pair<float, std::tuple<float, float, float>>& b) const {
+                return a.first > b.first;
+            }
+        };
+        
         std::priority_queue<
             std::pair<float, std::tuple<float, float, float>>,
             std::vector<std::pair<float, std::tuple<float, float, float>>>,
@@ -724,7 +969,8 @@ private:
                     auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
-                    if(!indexExistsInFile(filename, neighbor_tuple))
+                    
+                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                     {
                         adjacency_list_tuples[current].push_back(neighbor_tuple);
                     }
@@ -768,11 +1014,11 @@ private:
                         
                         auto index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                        
+                        //Esse lixo de código é para não verificar todos os vértices toda vez
                         if(pode1 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
-                                
                                 pode1 = false;
                             }
                             
@@ -813,7 +1059,7 @@ private:
 
                         if(pode2 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode2 = false;
                             }
@@ -853,7 +1099,7 @@ private:
                        
                         if(pode3 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode3 = false;
                             }
@@ -891,7 +1137,7 @@ private:
                        
                         if(pode4 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode4 = false;
                             }
@@ -933,7 +1179,7 @@ private:
 
                         if(pode5 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode5 = false;
                             }
@@ -974,7 +1220,7 @@ private:
 
                         if(pode6 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode6 = false;
                             }
@@ -1015,7 +1261,7 @@ private:
                         
                         if(pode7 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode7 = false;
                             }
@@ -1056,7 +1302,7 @@ private:
 
                         if(pode8 == true) 
                         {
-                            if(indexExistsInFile(filename, index) || indexExistsInFile(filename, index1)  || indexExistsInFile(filename, index2)|| indexExistsInFile(filename, index3))
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
                             {
                                 pode8 = false;
                             }
@@ -1117,8 +1363,6 @@ private:
         return {};
     }
 
-  
-
     void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
     {
         shortestPathEdges.clear();
@@ -1139,31 +1383,26 @@ private:
             shortestPathEdges.push_back({u, v});
         }
 
-        std::vector<std::tuple<float, float, float>> reversedPath = path;
-        std::reverse(reversedPath.begin(), reversedPath.end());
-       
-        std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair1 = std::make_pair(path[0], reversedPath[0]);
-        std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair2 = std::make_pair(reversedPath[0], path[0]);
+        // std::vector<std::tuple<float, float, float>> reversedPath = path;
+        // std::reverse(reversedPath.begin(), reversedPath.end());
+
+        std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair1 = std::make_pair(path[0], path[path.size() - 1]);
+        // std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair2 = std::make_pair(reversedPath[0], path[0]);
     
         
-
        
         // Processar os vértices do caminho
         for (size_t i = 0; i < path.size(); i++) 
         {
             
             VertexDijkstra vertex;
-            std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>,  PairHashTuple> startToEnd;
 
            
 
             startToEnd[pair1].push_back(path[i]);
-            startToEnd[pair2].push_back(reversedPath[i]);
+            // startToEnd[pair2].push_back(reversedPath[i]);
 
-            saveMapToBinaryFile(startToEnd, filename);
-            std::cout << "path: " <<  path[i] << std::endl;
-            std::cout << "reversed path: " <<  reversedPath[i] << std::endl;
-
+            
             
             
             // Acessando os elementos da tupla
@@ -1214,6 +1453,8 @@ private:
             // Adicionar o vértice processado à lista
             verticesDijkstra.push_back(vertex);
         }
+
+        
     }
 
 
@@ -1284,90 +1525,7 @@ private:
     */
 
  
-    void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
-    {
-        verticesDestino_.clear();
-        for (const auto& pose_in : msg->poses) {
-            VertexDijkstra destino;
-
-            destino.x = pose_in.position.x;
-            destino.y = pose_in.position.y;
-            destino.z = pose_in.position.z;
-
-            destino.orientation_x = pose_in.orientation.x;
-            destino.orientation_y = pose_in.orientation.y;
-            destino.orientation_z = pose_in.orientation.z;
-            destino.orientation_w = pose_in.orientation.w;
-
-            verticesDestino_.push_back(destino);
-        }
-        
-         
-        if(!verticesDestino_.empty())
-        {
-        
-            float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
-            float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
-            float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
-
-            float distanciaAteODestino = sqrt(dx * dx + dy * dy + dz * dz);
-
-            if(distanciaAteODestino <= distanceToObstacle_)
-            {
-                i_ = i_ + 1;
-            }
-
-       
-            float array_inicial[3] = {pose_x_, pose_y_, pose_z_};
-            float array_final[3] = {static_cast<float>(verticesDestino_[i_].x), static_cast<float>(verticesDestino_[i_].y), static_cast<float>(verticesDestino_[i_].z)};
-            
-            if(i_ == verticesDestino_.size())
-            {
-                i_ = 0;
-            }
-            
-            auto start_time_ = std::chrono::high_resolution_clock::now();
-            std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-           
-            storeEdgesInPath(shortestPath);
-           
-            auto end_time = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<float> duration = end_time - start_time_;  
-
-            adjacency_list.clear();
-
-            RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
-       
-        }
-    }
-
-    void callback_removed_navigable_vertices(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
-    {
-   
-        sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
-        sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
-        sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
-
-        for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z)
-        {
-            float x = *iter_x;
-            float y = *iter_y;
-            float z = *iter_z;
-
-            auto index = std::make_tuple(
-                roundToMultiple(x, distanceToObstacle_, decimals),
-                roundToMultiple(y, distanceToObstacle_, decimals),
-                roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
-            );
-
-            obstaclesVertices.insert(index);
-            
-        }
-       
-        
-    }
-
-   
+    
 
     void callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg) 
     {
@@ -1383,6 +1541,12 @@ private:
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
+        auto new_x_min = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        auto new_x_max = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        auto new_y_min = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        auto new_y_max = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        auto new_z_min = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        auto new_z_max = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
    
         
         
@@ -1403,6 +1567,49 @@ private:
 
             RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
         }
+
+        if (new_x_min != x_min_) 
+        {
+            std::cout << "\n" << std::endl;
+            x_min_ = new_x_min;
+            RCLCPP_INFO(this->get_logger(), "Updated x_min: %.2f", x_min_);
+            trainAStar();
+        }
+        if (new_x_max != x_max_) 
+        {
+            std::cout << "\n" << std::endl;
+            x_max_ = new_x_max;
+            RCLCPP_INFO(this->get_logger(), "Updated x_max: %.2f", x_max_);
+            trainAStar();
+        }
+        if (new_y_min != y_min_) 
+        {
+            std::cout << "\n" << std::endl;
+            y_min_ = new_y_min;
+            RCLCPP_INFO(this->get_logger(), "Updated y_min: %.2f", y_min_);
+            trainAStar();
+        }
+        if (new_y_max != y_max_) 
+        {
+            std::cout << "\n" << std::endl;
+           y_max_ = new_y_max;
+            RCLCPP_INFO(this->get_logger(), "Updated y_max: %.2f", y_max_);
+            trainAStar();
+        }        
+        if (new_z_min != z_min_) 
+        {
+            std::cout << "\n" << std::endl;
+            z_min_ = new_z_min;
+            RCLCPP_INFO(this->get_logger(), "Updated z_min: %.2f", z_min_);
+            trainAStar();
+        }
+        if (new_z_max != z_max_) 
+        {
+            std::cout << "\n" << std::endl;
+            z_max_ = new_z_max;
+            RCLCPP_INFO(this->get_logger(), "Updated z_max: %.2f", z_max_);
+            trainAStar();
+        }
        
         
 
@@ -1418,30 +1625,44 @@ public:
      
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
+        this->declare_parameter<double>("x_min", -1.0);
+        this->declare_parameter<double>("x_max", 1.0);
+        this->declare_parameter<double>("y_min", -1.0);
+        this->declare_parameter<double>("y_max", 1.0);
+        this->declare_parameter<double>("z_min", 0.0);
+        this->declare_parameter<double>("z_max", 0.4);
 
 
         // Initialize parameters 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
+        x_min_ = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
+        x_max_ = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
+        y_min_ = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
+        y_max_ = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
+        z_min_ = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
+        z_max_ = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
 
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "Updated x_min: %f", x_min_);
+        RCLCPP_INFO(this->get_logger(), "Updated x_max: %f", x_max_);
+        RCLCPP_INFO(this->get_logger(), "Updated y_min: %f", y_min_);
+        RCLCPP_INFO(this->get_logger(), "Updated y_max: %f", y_max_);
+        RCLCPP_INFO(this->get_logger(), "Updated z_min: %f", z_min_);
+        RCLCPP_INFO(this->get_logger(), "Updated z_max: %f", z_max_);
 
         parameterTimer = this->create_wall_timer(
-            std::chrono::seconds(2),
+            std::chrono::seconds(5),
             std::bind(&AStar::check_parameters, this));
 
-        parameterTimer = this->create_wall_timer(
-            std::chrono::seconds(2),
-            std::bind(&AStar::check_parameters, this));
+    
 
         decimals = countDecimals(distanceToObstacle_);
+        
        
  
-        subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
-
         publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
         timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&AStar::publisher_dijkstra_path, this));
 
@@ -1452,11 +1673,13 @@ public:
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/rtabmap/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
 
-        subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-            "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
-
+        
+        // const std::string filename = "/home/momesso/autonomous/src/map/config/obstacles.bin";
 
        
+
+        // loadVerticesFromFile(filename);
+        trainAStar();
     }
 };
 

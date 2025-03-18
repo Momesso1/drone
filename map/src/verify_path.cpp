@@ -289,68 +289,90 @@ private:
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
-
-   
-    PointVector loadVectorByKey(const std::string& filename, const KeyPair& key) 
+// Implementação da função findEntryInFile
+    bool findEntryInFile(
+        const std::string& filename,
+        const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& key,
+        std::vector<std::tuple<float, float, float>>& result)
     {
         std::ifstream file(filename, std::ios::binary);
         if (!file) {
             std::cerr << "Erro ao abrir o arquivo para leitura: " << filename << std::endl;
-            return {};
+            return false;
         }
         
+        // Ler o cabeçalho do arquivo
         FileHeader header;
         file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
         
+        // Calcular o endereço hash para esta chave
         uint32_t address = hashAddress(key, header.hashTableSize);
         uint32_t originalAddress = address;
         
-        while (true) {
+        // Procurar a entrada na tabela hash
+        bool found = false;
+        HashEntry entry;
+        
+        do {
+            // Ler a entrada atual no endereço hash
             file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry));
-            
-            HashEntry entry;
             file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
             
-            if (!entry.occupied) {
-                file.close();
-                return {};
-            }
-            
-            Point3D first(entry.key_first_x, entry.key_first_y, entry.key_first_z);
-            Point3D second(entry.key_second_x, entry.key_second_y, entry.key_second_z);
-            KeyPair fileKey(first, second);
-            
-            if (fileKey == key) {
-                file.seekg(entry.dataOffset);
+            if (entry.occupied) {
+                // Verificar se é a chave que estamos procurando
+                std::tuple<float, float, float> first = {
+                    entry.key_first_x, entry.key_first_y, entry.key_first_z
+                };
+                std::tuple<float, float, float> second = {
+                    entry.key_second_x, entry.key_second_y, entry.key_second_z
+                };
                 
-                uint32_t vectorSize;
-                file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
+                // Comparar as tuplas (pode precisar de uma função de comparação especializada para floats)
+                bool matchFirst = std::abs(std::get<0>(first) - std::get<0>(key.first)) < 0.00001f &&
+                                std::abs(std::get<1>(first) - std::get<1>(key.first)) < 0.00001f &&
+                                std::abs(std::get<2>(first) - std::get<2>(key.first)) < 0.00001f;
+                                
+                bool matchSecond = std::abs(std::get<0>(second) - std::get<0>(key.second)) < 0.00001f &&
+                                std::abs(std::get<1>(second) - std::get<1>(key.second)) < 0.00001f &&
+                                std::abs(std::get<2>(second) - std::get<2>(key.second)) < 0.00001f;
                 
-                PointVector result;
-                result.reserve(vectorSize);  
-                
-                for (uint32_t i = 0; i < vectorSize; ++i) {
-                    float x, y, z;
-                    file.read(reinterpret_cast<char*>(&x), sizeof(float));
-                    file.read(reinterpret_cast<char*>(&y), sizeof(float));
-                    file.read(reinterpret_cast<char*>(&z), sizeof(float));
-                    
-                    result.emplace_back(x, y, z);
+                if (matchFirst && matchSecond) {
+                    found = true;
+                    break;
                 }
-                
-                file.close();
-                return result;
+            } else if (!entry.occupied) {
+                // Se encontrarmos uma entrada vazia, a chave não existe no arquivo
+                break;
             }
             
+            // Avançar para o próximo slot (tratamento de colisões)
             address = (address + 1) % header.hashTableSize;
+        } while (address != originalAddress);
+        
+        if (found) {
+            // Posicionar o ponteiro de leitura no início dos dados
+            file.seekg(entry.dataOffset);
             
-            if (address == originalAddress) {
-                break;
+            // Ler o tamanho do vetor
+            uint32_t vectorSize;
+            file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
+            
+            // Limpar o vetor de resultado
+            result.clear();
+            result.reserve(vectorSize);
+            
+            // Ler cada ponto no vetor
+            for (uint32_t i = 0; i < vectorSize; ++i) {
+                float x, y, z;
+                file.read(reinterpret_cast<char*>(&x), sizeof(float));
+                file.read(reinterpret_cast<char*>(&y), sizeof(float));
+                file.read(reinterpret_cast<char*>(&z), sizeof(float));
+                result.push_back({x, y, z});
             }
         }
         
         file.close();
-        return {}; 
+        return found;
     }
 
     void viewHashTable(const std::string& filename) 
@@ -624,36 +646,41 @@ private:
             
             auto start_time_ = std::chrono::high_resolution_clock::now();
 
-            const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths.bin";
+            const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths2.bin";
 
             std::tuple<float, float, float> pose_tuple = {roundedPoseX, roundedPoseY, roundedPoseZ};
             std::tuple<float, float, float> destination_tuple = {roundedDestinationX, roundedDestinationY, roundedDestinationZ};
 
-            KeyPair searchKey = {pose_tuple, destination_tuple};
+            std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> key = {pose_tuple, destination_tuple};
 
             std::cout << pose_tuple << std::endl;
             std::cout << destination_tuple << std::endl;
 
-            std::vector<std::tuple<float, float, float>> shortestPath;
-
-            PointVector result = loadVectorByKey(filename, searchKey);
-        
+            std::vector<std::tuple<float, float, float>> result;
+            
+            bool found = findEntryInFile(filename, key, result);        
             // Verificar o resultado
             if (!result.empty()) 
             {
                 std::cout << "Vetor encontrado para a chave especificada. Contém " << result.size() << " pontos:" << std::endl;
                 
-                for (const auto& point : result) 
-                {
-                    shortestPath.push_back({std::get<0>(point), std::get<1>(point), std::get<2>(point)});
-                }
+              
 
-                storeEdgesInPath(shortestPath);
+                storeEdgesInPath(result);
             } 
             else 
             {
                 std::cout << "Nenhum vetor encontrado para a chave especificada." << std::endl;
             }
+
+
+            // bool isValid = verifyFileContent(filename);
+
+            // if (isValid) {
+            //     std::cout << "Verificação do arquivo concluída com sucesso!" << std::endl;
+            // } else {
+            //     std::cout << "Falha na verificação do arquivo." << std::endl;
+            // }
            
            
             auto end_time = std::chrono::high_resolution_clock::now();
@@ -664,6 +691,140 @@ private:
        
         }
     }
+
+    
+
+
+
+
+    bool verifyFileContent(const std::string& filename) {
+        std::ifstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+            std::cerr << "Erro ao abrir o arquivo para verificação: " << filename << std::endl;
+            return false;
+        }
+        
+        // Verificar o tamanho do arquivo
+        file.seekg(0, std::ios::end);
+        std::streampos fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        
+        std::cout << "Tamanho do arquivo: " << fileSize << " bytes" << std::endl;
+        
+        if (fileSize == 0) {
+            std::cerr << "O arquivo está vazio" << std::endl;
+            file.close();
+            return false;
+        }
+        
+        // Tentar ler o cabeçalho
+        FileHeader header;
+        file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
+        
+        if (file.fail()) {
+            std::cerr << "Erro ao ler o cabeçalho do arquivo" << std::endl;
+            file.close();
+            return false;
+        }
+        
+        std::cout << "Informações do cabeçalho:" << std::endl;
+        std::cout << "  Tamanho da tabela hash: " << header.hashTableSize << std::endl;
+        std::cout << "  Número de entradas: " << header.numEntries << std::endl;
+        std::cout << "  Offset inicial de dados: " << header.dataStartOffset << std::endl;
+        
+        // Verificar se os valores do cabeçalho são razoáveis
+        if (header.hashTableSize == 0 || header.numEntries == 0 || 
+            header.dataStartOffset < sizeof(FileHeader) ||
+            header.dataStartOffset > fileSize) {
+            std::cerr << "Cabeçalho contém valores inválidos" << std::endl;
+            file.close();
+            return false;
+        }
+        
+        // Contar entradas ocupadas
+        int occupiedEntries = 0;
+        for (uint32_t i = 0; i < header.hashTableSize; ++i) {
+            HashEntry entry;
+            file.seekg(sizeof(FileHeader) + i * sizeof(HashEntry));
+            file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
+            
+            if (file.fail()) {
+                std::cerr << "Erro ao ler a entrada #" << i << std::endl;
+                file.close();
+                return false;
+            }
+            
+            if (entry.occupied) {
+                occupiedEntries++;
+                
+                // Verificar se o offset de dados é válido
+                if (entry.dataOffset < header.dataStartOffset || entry.dataOffset >= fileSize) {
+                    std::cerr << "Entrada #" << i << " tem offset de dados inválido: " << entry.dataOffset << std::endl;
+                    continue;
+                }
+                
+                // Verificar se podemos ler o tamanho do vetor
+                file.seekg(entry.dataOffset);
+                uint32_t vectorSize;
+                file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
+                
+                if (file.fail()) {
+                    std::cerr << "Erro ao ler o tamanho do vetor para a entrada #" << i << std::endl;
+                    continue;
+                }
+                if(entry.key_first_x == 0 && entry.key_first_y == 0 && entry.key_first_z == 0)
+                {
+                    for(int i = 0; i < 15; i++)
+                    {
+                        std::cout << "Entrada #" << i << ":" << std::endl;
+                        std::cout << "  Chave: (" 
+                                  << entry.key_first_x << "," << entry.key_first_y << "," << entry.key_first_z << ") -> ("
+                                  << entry.key_second_x << "," << entry.key_second_y << "," << entry.key_second_z << ")" << std::endl;
+                        std::cout << "  Offset de dados: " << entry.dataOffset << std::endl;
+                        std::cout << "  Tamanho de dados: " << entry.dataSize << std::endl;
+                        std::cout << "  Pontos no vetor: " << vectorSize << std::endl;
+                    }
+                }
+                
+               
+                
+                // Verificar se o tamanho declarado é consistente
+                uint32_t expectedSize = sizeof(uint32_t) + vectorSize * (3 * sizeof(float));
+                if (entry.dataSize != expectedSize) {
+                    std::cerr << "  Aviso: Tamanho declarado (" << entry.dataSize 
+                              << ") não corresponde ao calculado (" << expectedSize << ")" << std::endl;
+                }
+                
+                // Verificar se podemos ler alguns pontos
+                // if (vectorSize > 0) {
+                //     float x, y, z;
+                //     file.read(reinterpret_cast<char*>(&x), sizeof(float));
+                //     file.read(reinterpret_cast<char*>(&y), sizeof(float));
+                //     file.read(reinterpret_cast<char*>(&z), sizeof(float));
+                    
+                //     if (!file.fail()) {
+                //         std::cout << "  Primeiro ponto: (" << x << "," << y << "," << z << ")" << std::endl;
+                //     } else {
+                //         std::cerr << "  Erro ao ler o primeiro ponto" << std::endl;
+                //     }
+                // }
+                
+                // std::cout << "  ------------------------------" << std::endl;
+            }
+        }
+        
+        // std::cout << "Total de entradas ocupadas: " << occupiedEntries << " (esperado: " << header.numEntries << ")" << std::endl;
+        
+        file.close();
+        return true;
+    }
+
+
+
+
+
+
+
    
 
     void callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg) 

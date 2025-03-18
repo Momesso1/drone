@@ -16,6 +16,12 @@ def generate_launch_description():
         "diagonalEdges": 3,
         "maxSecurityDistance": 0.25,
         "maxSecurityHeightDistance": 0.25,
+        "x_min": -1.0,
+        "x_max": 1.0,
+        "y_min": -1.0,
+        "y_max": 1.0,
+        "z_min": 0.0,
+        "z_max": 1.0,
     }]
 
   
@@ -31,19 +37,9 @@ def generate_launch_description():
         ),
 
         
-        Node(
-            package='autonomous_map',
-            executable='send_poses',
-            parameters=parameters,
-            output='screen',
-        ),
+       
 
-        Node(
-            package='map',
-            executable='create_graph',
-            output='screen',
-            parameters=parameters,
-        ),
+       
 
        
 
