@@ -622,55 +622,6 @@ while (!positionFound && probeCount < hashTableSize) {
         return decimals;
     }
 
-    bool indexExistsInFile(const std::string& filename, const std::tuple<float, float, float>& index) 
-    {
-        std::ifstream file(filename, std::ios::binary);
-        if (!file.is_open()) return false;
-        
-        size_t tableSize;
-        file.read(reinterpret_cast<char*>(&tableSize), sizeof(size_t));
-        
-        size_t hash = TupleHash()(index) % tableSize;
-        
-        size_t bytePos = hash / 8;
-        uint8_t bitPos = hash % 8;
-        
-        file.seekg(sizeof(size_t) + bytePos, std::ios::beg);
-        
-        uint8_t byte;
-        file.read(reinterpret_cast<char*>(&byte), 1);
-        
-        bool exists = (byte & (1 << bitPos)) != 0;
-        
-        file.close();
-        return exists;
-    }
-
-    // std::unordered_set<std::tuple<float, float, float>> loadVerticesFromFile(const std::string& filename) 
-    // {
-        
-    //     std::ifstream file(filename, std::ios::binary);
-    //     if (!file.is_open()) {
-    //         std::cerr << "Erro ao abrir o arquivo para leitura: " << filename << std::endl;
-            
-    //     }
-        
-    //     // Lê o número de tuplas salvas
-    //     size_t count = 0;
-    //     file.read(reinterpret_cast<char*>(&count), sizeof(count));
-        
-    //     // Para cada tupla, lê os três floats e insere no unordered_set
-    //     for (size_t i = 0; i < count; ++i) {
-    //         float x, y, z;
-    //         file.read(reinterpret_cast<char*>(&x), sizeof(x));
-    //         file.read(reinterpret_cast<char*>(&y), sizeof(y));
-    //         file.read(reinterpret_cast<char*>(&z), sizeof(z));
-    //         obstaclesVertices.emplace(std::make_tuple(x, y, z));
-    //     }
-        
-    //     file.close();
-    // }
-        
 
     
 
@@ -723,111 +674,63 @@ while (!positionFound && probeCount < hashTableSize) {
         };
     }
 
-    void trainAStar()
+    void trainAStar() 
     {
         const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths2.bin";
-        std::cout << "opa" << std::endl;
-        auto start_time_ = std::chrono::high_resolution_clock::now();
-
-        float new_x, new_y, new_z = 0.0;
-        float new_x1, new_y1, new_z1 = 0.0;
-            
-        for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) 
-        {
-            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) 
-            {
-                for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) 
-                {
-                    auto start_time1_ = std::chrono::high_resolution_clock::now();
-                    new_x = roundToMultiple(x, distanceToObstacle_, decimals);
-                    new_y = roundToMultiple(y, distanceToObstacle_, decimals);
-                    new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
-
-                    auto index = std::make_tuple(static_cast<float>(new_x), 
-                        static_cast<float>(new_y), 
-                        static_cast<float>(new_z));
-
+        std::cout << "Iniciando otimização do A*." << std::endl;
+    
+        // 1. Pré-calcule todos os pontos válidos (não-obstáculo)
+        std::vector<std::tuple<float, float, float>> validPoints;
+        for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) {
+            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) {
+                for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) {
+                    float new_x = roundToMultiple(x, distanceToObstacle_, decimals);
+                    float new_y = roundToMultiple(y, distanceToObstacle_, decimals);
+                    float new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+    
+                    // Se necessário, normaliza os valores zero (conforme o código original)
                     if(new_x == 0)
-                    {
                         new_x = std::abs(new_x);
-                    }
-
                     if(new_y == 0)
-                    {
                         new_y = std::abs(new_y);
-                    }
-
                     if(new_z == 0)
-                    {
                         new_z = std::abs(new_z);
+    
+                    std::tuple<float, float, float> pt = std::make_tuple(new_x, new_y, new_z);
+                    if (obstaclesVertices.find(pt) == obstaclesVertices.end()) {
+                        validPoints.push_back(pt);
                     }
-
-                    if (obstaclesVertices.find(index) == obstaclesVertices.end())
-                    {
-                        
-                        for (float z1 = z_min_; z1 <= z_max_; z1 += distanceToObstacle_) 
-                        {
-                            for (float y1 = y_min_; y1 <= y_max_; y1 += distanceToObstacle_) 
-                            {
-                                for (float x1 = x_min_; x1 <= x_max_; x1 += distanceToObstacle_) 
-                                {
-                                    new_x1 = roundToMultiple(x1, distanceToObstacle_, decimals);
-                                    new_y1 = roundToMultiple(y1, distanceToObstacle_, decimals);
-                                    new_z1 = roundToMultipleFromBase(z1, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);    
-
-                                    auto index1 = std::make_tuple(static_cast<float>(new_x1), static_cast<float>(new_y1), static_cast<float>(new_z1));
-
-                                  
-                                    
-                                    if(new_x1 == 0)
-                                    {
-                                        new_x1 = std::abs(new_x1);
-                                    }
-
-                                    if(new_y1 == 0)
-                                    {
-                                        new_y1 = std::abs(new_y1);
-                                    }
-
-                                    if(new_z1 == 0)
-                                    {
-                                        new_z1 = std::abs(new_z1);
-                                    }
-
-
-                                    if (obstaclesVertices.find(index1) == obstaclesVertices.end())
-                                    {
-                                        float array_inicial[3] = {new_x, new_y, new_z};
-                                        float array_final[3] = {new_x1, new_y1, new_z1};
-                                        
-
-
-                                        std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-           
-                                        storeEdgesInPath(shortestPath);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    auto end_time1 = std::chrono::high_resolution_clock::now();
-                    std::chrono::duration<double> duration1 = end_time1 - start_time1_;
-
-                    std::cout << "A* execution time: " << duration1.count() << " seconds" << std::endl;
-                    
                 }
-                
+            }
+        }
+    
+        auto start_time = std::chrono::high_resolution_clock::now();
+    
+        // 2. Para cada ponto, verifique os pontos subsequentes para evitar duplicações
+        for (size_t i = 0; i < validPoints.size(); ++i) 
+        {
+            auto start_time1_ = std::chrono::high_resolution_clock::now();
+
+            for (size_t j = i + 1; j < validPoints.size(); ++j) 
+            {
+                float array_inicial[3] = { std::get<0>(validPoints[i]), std::get<1>(validPoints[i]), std::get<2>(validPoints[i]) };
+                float array_final[3]   = { std::get<0>(validPoints[j]), std::get<1>(validPoints[j]), std::get<2>(validPoints[j]) };
+    
+                std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
+                storeEdgesInPath(shortestPath);
             }
 
+            auto end_time1 = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> duration1 = end_time1 - start_time1_;
+
+            std::cout << "A* execution time: " << duration1.count() << " seconds" << std::endl;   
         }
-
-        
-        saveMapToBinaryFile(startToEnd, filename);
+    
         auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time_;
+        std::chrono::duration<double> duration = end_time - start_time;
         std::cout << "A* FINAL execution time: " << duration.count() << " seconds" << std::endl;
-
+    
+        saveMapToBinaryFile(startToEnd, filename);
     }
 
     std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
