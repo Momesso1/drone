@@ -289,124 +289,102 @@ private:
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
-// Implementação da função findEntryInFile
-    bool findEntryInFile(
-        const std::string& filename,
-        const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& key,
-        std::vector<std::tuple<float, float, float>>& result)
+
+    
+    bool loadDataFromBinaryFile(
+        const std::string& filename, 
+        const KeyPair& key, 
+        std::vector<std::tuple<float, float, float>>& resultVector) 
     {
         std::ifstream file(filename, std::ios::binary);
-        if (!file) {
+        if (!file.is_open()) {
             std::cerr << "Erro ao abrir o arquivo para leitura: " << filename << std::endl;
             return false;
         }
-        
+    
         // Ler o cabeçalho do arquivo
         FileHeader header;
         file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
-        
-        // Calcular o endereço hash para esta chave
-        uint32_t address = hashAddress(key, header.hashTableSize);
-        uint32_t originalAddress = address;
-        
-        // Procurar a entrada na tabela hash
-        bool found = false;
+        if (file.fail()) {
+            std::cerr << "Erro ao ler o cabeçalho do arquivo" << std::endl;
+            return false;
+        }
+    
+        // Calcular o endereço hash da chave
+        uint32_t originalAddress = hashAddress(key, header.hashTableSize);
+        uint32_t address = originalAddress;
+        int probeCount = 0;
         HashEntry entry;
         
-        do {
-            // Ler a entrada atual no endereço hash
-            file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry));
+        while (probeCount < header.hashTableSize) {
+            // Posicionar o ponteiro na entrada da tabela hash
+            file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
+            if (file.fail()) {
+                std::cerr << "Erro ao buscar entrada na tabela hash" << std::endl;
+                return false;
+            }
+    
+            // Ler a entrada da tabela hash
             file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-            
-            if (entry.occupied) {
-                // Verificar se é a chave que estamos procurando
-                std::tuple<float, float, float> first = {
-                    entry.key_first_x, entry.key_first_y, entry.key_first_z
-                };
-                std::tuple<float, float, float> second = {
-                    entry.key_second_x, entry.key_second_y, entry.key_second_z
-                };
-                
-                // Comparar as tuplas (pode precisar de uma função de comparação especializada para floats)
-                bool matchFirst = std::abs(std::get<0>(first) - std::get<0>(key.first)) < 0.00001f &&
-                                std::abs(std::get<1>(first) - std::get<1>(key.first)) < 0.00001f &&
-                                std::abs(std::get<2>(first) - std::get<2>(key.first)) < 0.00001f;
-                                
-                bool matchSecond = std::abs(std::get<0>(second) - std::get<0>(key.second)) < 0.00001f &&
-                                std::abs(std::get<1>(second) - std::get<1>(key.second)) < 0.00001f &&
-                                std::abs(std::get<2>(second) - std::get<2>(key.second)) < 0.00001f;
-                
-                if (matchFirst && matchSecond) {
-                    found = true;
-                    break;
+            if (file.fail()) {
+                std::cerr << "Erro ao ler a entrada no endereço " << address << std::endl;
+                return false;
+            }
+    
+            // Se a entrada estiver vazia, significa que a chave não foi encontrada
+            if (!entry.occupied) {
+                std::cerr << "Chave não encontrada na tabela hash" << std::endl;
+                return false;
+            }
+    
+            // Verificar se a chave lida é a mesma que estamos procurando
+            KeyPair storedKey = {
+                {entry.key_first_x, entry.key_first_y, entry.key_first_z}, 
+                {entry.key_second_x, entry.key_second_y, entry.key_second_z}
+            };
+    
+            if (storedKey == key) {
+                // Chave encontrada, vamos buscar os dados
+                file.seekg(entry.dataOffset, std::ios::beg);
+                if (file.fail()) {
+                    std::cerr << "Erro ao posicionar no offset de dados" << std::endl;
+                    return false;
                 }
-            } else if (!entry.occupied) {
-                // Se encontrarmos uma entrada vazia, a chave não existe no arquivo
-                break;
+    
+                // Ler o tamanho do vetor
+                uint32_t vectorSize;
+                file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
+                if (file.fail()) {
+                    std::cerr << "Erro ao ler o tamanho do vetor" << std::endl;
+                    return false;
+                }
+    
+                // Ler os pontos do vetor
+                resultVector.resize(vectorSize);
+                for (uint32_t i = 0; i < vectorSize; ++i) {
+                    float x, y, z;
+                    file.read(reinterpret_cast<char*>(&x), sizeof(float));
+                    file.read(reinterpret_cast<char*>(&y), sizeof(float));
+                    file.read(reinterpret_cast<char*>(&z), sizeof(float));
+                    
+                    if (file.fail()) {
+                        std::cerr << "Erro ao ler ponto do vetor" << std::endl;
+                        return false;
+                    }
+                    resultVector[i] = std::make_tuple(x, y, z);
+                }
+    
+                return true;
             }
-            
-            // Avançar para o próximo slot (tratamento de colisões)
-            address = (address + 1) % header.hashTableSize;
-        } while (address != originalAddress);
-        
-        if (found) {
-            // Posicionar o ponteiro de leitura no início dos dados
-            file.seekg(entry.dataOffset);
-            
-            // Ler o tamanho do vetor
-            uint32_t vectorSize;
-            file.read(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
-            
-            // Limpar o vetor de resultado
-            result.clear();
-            result.reserve(vectorSize);
-            
-            // Ler cada ponto no vetor
-            for (uint32_t i = 0; i < vectorSize; ++i) {
-                float x, y, z;
-                file.read(reinterpret_cast<char*>(&x), sizeof(float));
-                file.read(reinterpret_cast<char*>(&y), sizeof(float));
-                file.read(reinterpret_cast<char*>(&z), sizeof(float));
-                result.push_back({x, y, z});
-            }
+    
+            // Se houve colisão, aplicar a sondagem quadrática para encontrar a chave correta
+            probeCount++;
+            address = (originalAddress + probeCount * probeCount) % header.hashTableSize;
         }
-        
-        file.close();
-        return found;
+    
+        std::cerr << "Erro: Chave não encontrada após sondagem quadrática" << std::endl;
+        return false;
     }
-
-    void viewHashTable(const std::string& filename) 
-    {
-        std::ifstream file(filename, std::ios::binary);
-        if (!file) {
-            std::cerr << "Erro ao abrir o arquivo: " << filename << std::endl;
-            return;
-        }
-        
-        FileHeader header;
-        file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
-        
-        std::cout << "Tamanho da tabela hash: " << header.hashTableSize << std::endl;
-        std::cout << "Número de entradas: " << header.numEntries << std::endl;
-        std::cout << "Início dos dados: " << header.dataStartOffset << std::endl;
-        
-        for (uint32_t i = 0; i < header.hashTableSize; ++i) {
-            HashEntry entry;
-            file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-            
-            if (entry.occupied) {
-                std::cout << "Posição " << i << ": ";
-                std::cout << "Chave: ((" 
-                        << entry.key_first_x << ", " << entry.key_first_y << ", " << entry.key_first_z << "), ("
-                        << entry.key_second_x << ", " << entry.key_second_y << ", " << entry.key_second_z << ")) ";
-                std::cout << "Dados em: " << entry.dataOffset << " (tamanho: " << entry.dataSize << ")" << std::endl;
-            }
-        }
-        
-        file.close();
-    }
-
-
 
 
 
@@ -658,7 +636,7 @@ private:
 
             std::vector<std::tuple<float, float, float>> result;
             
-            bool found = findEntryInFile(filename, key, result);        
+            bool found = loadDataFromBinaryFile(filename, key, result);        
             // Verificar o resultado
             if (!result.empty()) 
             {
@@ -674,13 +652,13 @@ private:
             }
 
 
-            // bool isValid = verifyFileContent(filename);
+            //bool isValid = verifyFileContent(filename);
 
-            // if (isValid) {
-            //     std::cout << "Verificação do arquivo concluída com sucesso!" << std::endl;
-            // } else {
+            //if (isValid) {
+            //    std::cout << "Verificação do arquivo concluída com sucesso!" << std::endl;
+            //} else {
             //     std::cout << "Falha na verificação do arquivo." << std::endl;
-            // }
+            //}
            
            
             auto end_time = std::chrono::high_resolution_clock::now();
@@ -772,7 +750,7 @@ private:
                     std::cerr << "Erro ao ler o tamanho do vetor para a entrada #" << i << std::endl;
                     continue;
                 }
-                if(entry.key_first_x == 0 && entry.key_first_y == 0 && entry.key_first_z == 0)
+                if(entry.key_first_x == 0 && entry.key_first_y == 0 && entry.key_first_z == 0 && entry.key_second_x == 0 && entry.key_second_y == 0.25 && entry.key_second_z == 0.75)
                 {
                     for(int i = 0; i < 15; i++)
                     {
@@ -874,7 +852,7 @@ public:
     {
     
      
-        this->declare_parameter<double>("distanceToObstacle", 0.2);
+        this->declare_parameter<double>("distanceToObstacle", 0.25);
         this->declare_parameter<int>("diagonalEdges", 3);
 
 
