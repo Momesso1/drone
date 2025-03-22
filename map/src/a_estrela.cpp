@@ -34,7 +34,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
-
+#include <omp.h>
 using namespace std::chrono_literals;
 
 namespace std 
@@ -193,6 +193,32 @@ private:
         }
     };
 
+    struct PairHash1 {
+        std::size_t operator()(const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p) const {
+            std::size_t h1 = std::hash<float>{}(std::get<0>(p.first)) ^ 
+                            (std::hash<float>{}(std::get<1>(p.first)) << 1) ^
+                            (std::hash<float>{}(std::get<2>(p.first)) << 2);
+            
+            std::size_t h2 = std::hash<float>{}(std::get<0>(p.second)) ^
+                            (std::hash<float>{}(std::get<1>(p.second)) << 1) ^
+                            (std::hash<float>{}(std::get<2>(p.second)) << 2);
+                            
+            return h1 ^ (h2 << 1);
+        }
+    };
+
+    struct PairEqual {
+        bool operator()(const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p1,
+                        const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p2) const {
+            return std::get<0>(p1.first) == std::get<0>(p2.first) &&
+                   std::get<1>(p1.first) == std::get<1>(p2.first) &&
+                   std::get<2>(p1.first) == std::get<2>(p2.first) &&
+                   std::get<0>(p1.second) == std::get<0>(p2.second) &&
+                   std::get<1>(p1.second) == std::get<1>(p2.second) &&
+                   std::get<2>(p1.second) == std::get<2>(p2.second);
+        }
+    };
+
    
     struct FileHeader {
         uint32_t hashTableSize; 
@@ -291,7 +317,12 @@ private:
     std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>,  PairHashTuple> startToEnd;
 
 
-    bool saveMapToBinaryFile(const std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>, PairHashTuple>& map, const std::string& filename)
+    bool saveMapToBinaryFile(
+        const std::unordered_map<
+            std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
+            std::vector<std::tuple<float, float, float>>,
+            PairHash1, PairEqual>& map, 
+        const std::string& filename)
     {
         // Verificar se o mapa está vazio
         if (map.empty()) {
@@ -376,49 +407,50 @@ private:
         
         // Processar todas as entradas do mapa
         int entryCount = 0;
-        for (const auto& pair : map) {
+        for (const auto& pair : map) 
+        {
             entryCount++;
             // std::cout << "Processando entrada #" << entryCount << "/" << map.size() << std::endl;
             
             // Calcular o endereço hash para esta chave
             // Dentro do loop que processa cada entrada do map:
-uint32_t originalAddress = hashAddress(pair.first, hashTableSize);
-uint32_t address = originalAddress;
-bool positionFound = false;
-int probeCount = 0;
-HashEntry entry;
+            uint32_t originalAddress = hashAddress(pair.first, hashTableSize);
+            uint32_t address = originalAddress;
+            bool positionFound = false;
+            int probeCount = 0;
+            HashEntry entry;
 
-while (!positionFound && probeCount < hashTableSize) {
-    // Posicionar o ponteiro para ler a entrada na posição calculada
-    file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
-    if (file.fail()) {
-        std::cerr << "Erro ao posicionar o ponteiro para leitura no endereço " << address << std::endl;
-        file.close();
-        formattedKeysFile.close();
-        return false;
-    }
-    
-    file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-    if (file.fail()) {
-        std::cerr << "Erro ao ler a entrada no endereço " << address << std::endl;
-        file.close();
-        formattedKeysFile.close();
-        return false;
-    }
-    
-    if (!entry.occupied) {
-        positionFound = true;
-        // std::cout << "Posição livre encontrada no endereço " << address << std::endl;
-        break;
-    } else {
-        collisionCount++;
-        probeCount++;
-        // Sondagem quadrática: o deslocamento é o quadrado do número de tentativas
-        address = (originalAddress + probeCount * probeCount) % hashTableSize;
-        // std::cout << "Colisão detectada. Tentativa " << probeCount 
-        //           << ", novo endereço: " << address << std::endl;
-    }
-}
+            while (!positionFound && probeCount < hashTableSize) {
+                // Posicionar o ponteiro para ler a entrada na posição calculada
+                file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
+                if (file.fail()) {
+                    std::cerr << "Erro ao posicionar o ponteiro para leitura no endereço " << address << std::endl;
+                    file.close();
+                    formattedKeysFile.close();
+                    return false;
+                }
+                
+                file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
+                if (file.fail()) {
+                    std::cerr << "Erro ao ler a entrada no endereço " << address << std::endl;
+                    file.close();
+                    formattedKeysFile.close();
+                    return false;
+                }
+                
+                if (!entry.occupied) {
+                    positionFound = true;
+                    // std::cout << "Posição livre encontrada no endereço " << address << std::endl;
+                    break;
+                } else {
+                    collisionCount++;
+                    probeCount++;
+                    // Sondagem quadrática: o deslocamento é o quadrado do número de tentativas
+                    address = (originalAddress + probeCount * probeCount) % hashTableSize;
+                    // std::cout << "Colisão detectada. Tentativa " << probeCount 
+                    //           << ", novo endereço: " << address << std::endl;
+                }
+            }
 
             if (!positionFound) {
                 std::cerr << "Erro: Não foi possível encontrar uma posição livre após " 
@@ -579,12 +611,6 @@ while (!positionFound && probeCount < hashTableSize) {
 
         
 
-
-
-
-
-
-
     inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
         
@@ -673,14 +699,52 @@ while (!positionFound && probeCount < hashTableSize) {
 
         };
     }
-
+   
+    
     void trainAStar() 
     {
         const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths2.bin";
         std::cout << "Iniciando otimização do A*." << std::endl;
     
+        // VERIFICAÇÃO DO AMBIENTE OPENMP
+        #ifdef _OPENMP
+            std::cout << "OpenMP está habilitado na compilação." << std::endl;
+        #else
+            std::cout << "OpenMP NÃO está habilitado na compilação!" << std::endl;
+        #endif
+        
+        // Força explicitamente todas as 24 threads
+        omp_set_num_threads(24);
+        
+        // VERIFICA SE O AMBIENTE CONSEGUE USAR MAIS DE UMA THREAD
+        int max_threads = omp_get_max_threads();
+        std::cout << "Threads máximas disponíveis: " << max_threads << std::endl;
+        
+        if (max_threads <= 1) {
+            std::cout << "AVISO: Seu ambiente permite apenas 1 thread!" << std::endl;
+            std::cout << "Verifique se a variável OMP_NUM_THREADS está definida corretamente." << std::endl;
+        }
+        
+        // Testa se realmente consegue usar múltiplas threads
+        int thread_count = 0;
+        #pragma omp parallel
+        {
+            #pragma omp atomic
+            thread_count++;
+        }
+        std::cout << "Threads realmente ativadas: " << thread_count << std::endl;
+        
+        // Se não conseguiu usar todas as threads, vamos forçar manualmente
+        if (thread_count < max_threads) {
+            std::cout << "FORÇANDO paralelização manual com threads" << std::endl;
+        }
+    
         // 1. Pré-calcule todos os pontos válidos (não-obstáculo)
         std::vector<std::tuple<float, float, float>> validPoints;
+        
+        auto start_phase1 = std::chrono::high_resolution_clock::now();
+        
+        // Coletando pontos válidos
         for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) {
             for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) {
                 for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) {
@@ -688,54 +752,213 @@ while (!positionFound && probeCount < hashTableSize) {
                     float new_y = roundToMultiple(y, distanceToObstacle_, decimals);
                     float new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
     
-                    // Se necessário, normaliza os valores zero (conforme o código original)
-                    if(new_x == 0)
-                        new_x = std::abs(new_x);
-                    if(new_y == 0)
-                        new_y = std::abs(new_y);
-                    if(new_z == 0)
-                        new_z = std::abs(new_z);
+                    // Normaliza valores zero, se necessário
+                    if(new_x == -0.0f)
+                        new_x = 0.0f;
+                    if(new_y == -0.0f)
+                        new_y = 0.0f;
+                    if(new_z == -0.0f)
+                        new_z = 0.0f;
     
-                    std::tuple<float, float, float> pt = std::make_tuple(new_x, new_y, new_z);
+                    auto pt = std::make_tuple(new_x, new_y, new_z);
                     if (obstaclesVertices.find(pt) == obstaclesVertices.end()) {
                         validPoints.push_back(pt);
                     }
                 }
             }
         }
+        
+        auto end_phase1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration_phase1 = end_phase1 - start_phase1;
+        std::cout << "Fase 1 concluída em: " << duration_phase1.count() << " segundos" << std::endl;
+        std::cout << "Total de pontos válidos: " << validPoints.size() << std::endl;
+    
+        // Declaração do mapa global para armazenar os caminhos
+        std::unordered_map<
+            std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
+            std::vector<std::tuple<float, float, float>>,
+            PairHash1, PairEqual> startToEnd;
     
         auto start_time = std::chrono::high_resolution_clock::now();
-    
-        // 2. Para cada ponto, verifique os pontos subsequentes para evitar duplicações
-        for (size_t i = 0; i < validPoints.size(); ++i) 
-        {
-            auto start_time1_ = std::chrono::high_resolution_clock::now();
-
-            for (size_t j = i + 1; j < validPoints.size(); ++j) 
-            {
-                float array_inicial[3] = { std::get<0>(validPoints[i]), std::get<1>(validPoints[i]), std::get<2>(validPoints[i]) };
-                float array_final[3]   = { std::get<0>(validPoints[j]), std::get<1>(validPoints[j]), std::get<2>(validPoints[j]) };
-    
-                std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-                storeEdgesInPath(shortestPath);
-            }
-
-            auto end_time1 = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> duration1 = end_time1 - start_time1_;
-
-            std::cout << "A* execution time: " << duration1.count() << " seconds" << std::endl;   
+        
+        // Definir número de threads (usar quantidade de threads disponíveis)
+        int num_threads = std::max(24, max_threads);
+        std::cout << "Iniciando processamento com " << num_threads << " threads" << std::endl;
+        
+        // NOVA ABORDAGEM: Fila de trabalho compartilhada
+        // Criar uma fila de tarefas
+        std::queue<size_t> task_queue;
+        std::mutex queue_mutex;
+        std::mutex map_mutex;
+        std::mutex cout_mutex;
+        std::atomic<bool> processing_complete(false);
+        std::atomic<int> total_edges_found(0);
+        
+        // Preencher a fila com os índices dos pontos a serem processados
+        for (size_t i = 0; i < validPoints.size(); i++) {
+            task_queue.push(i);
         }
+        
+        // Função que será executada por cada thread
+        auto worker_function = [&](int thread_id) {
+            auto thread_start = std::chrono::high_resolution_clock::now();
+            int local_edges_found = 0;
+            int points_processed = 0;
+            
+            // Mapa local para esta thread
+            std::unordered_map<
+                std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
+                std::vector<std::tuple<float, float, float>>,
+                PairHash1, PairEqual> local_map;
+            
+            // Log de início
+            {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << "Thread " << thread_id << " iniciada" << std::endl;
+            }
+            
+            while (!processing_complete) {
+                // Obter próxima tarefa da fila
+                size_t point_index;
+                bool has_task = false;
+                
+                {
+                    std::lock_guard<std::mutex> lock(queue_mutex);
+                    if (!task_queue.empty()) {
+                        point_index = task_queue.front();
+                        task_queue.pop();
+                        has_task = true;
+                    }
+                }
+                
+                // Se não há mais tarefas, sair do loop
+                if (!has_task) {
+                    break;
+                }
+                
+                // Log para monitoramento (reduzido para evitar excesso de logs)
+                if (points_processed % 50 == 0) {
+                    std::lock_guard<std::mutex> lock(cout_mutex);
+                    std::cout << "Thread " << thread_id << " processando ponto " << point_index << std::endl;
+                }
+                
+                int edge_count = 0;
+                
+                // Comparar com todos os outros pontos (após o índice atual)
+                for (size_t j = point_index + 1; j < validPoints.size(); j++) {
+                    float array_inicial[3] = { 
+                        std::get<0>(validPoints[point_index]), 
+                        std::get<1>(validPoints[point_index]), 
+                        std::get<2>(validPoints[point_index]) 
+                    };
+                    
+                    float array_final[3] = { 
+                        std::get<0>(validPoints[j]), 
+                        std::get<1>(validPoints[j]), 
+                        std::get<2>(validPoints[j]) 
+                    };
     
+                    std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
+                    
+                    // Se um caminho válido foi encontrado, armazena no mapa local
+                    if (!shortestPath.empty()) {
+                        auto edge = std::make_pair(validPoints[point_index], validPoints[j]);
+                        local_map[edge] = shortestPath;
+                        edge_count++;
+                    }
+                }
+                
+                // Incrementar contadores
+                local_edges_found += edge_count;
+                points_processed++;
+                
+                // Log do progresso (a cada 10 pontos para reduzir número de logs)
+                if (points_processed % 10 == 0) {
+                    std::lock_guard<std::mutex> lock(cout_mutex);
+                    std::cout << "Thread " << thread_id << ", processou ponto " << point_index 
+                            << ": Arestas encontradas neste ponto: " << edge_count 
+                            << ", Total local: " << local_edges_found << std::endl;
+                }
+                
+                // Mesclar periodicamente para liberar memória
+                if (local_map.size() > 1000) {
+                    std::lock_guard<std::mutex> lock(map_mutex);
+                    for (const auto& edge : local_map) {
+                        startToEnd[edge.first] = edge.second;
+                    }
+                    local_map.clear();
+                }
+            }
+            
+            // Mesclar resultados finais
+            {
+                std::lock_guard<std::mutex> lock(map_mutex);
+                for (const auto& edge : local_map) {
+                    startToEnd[edge.first] = edge.second;
+                }
+                total_edges_found += local_edges_found;
+            }
+            
+            // Log de finalização
+            auto thread_end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> thread_duration = thread_end - thread_start;
+            
+            {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << "Thread " << thread_id << " finalizada em " << thread_duration.count() 
+                        << " segundos, processou " << points_processed << " pontos, "
+                        << "encontrou " << local_edges_found << " arestas." << std::endl;
+            }
+        };
+        
+        // Criar e iniciar as threads
+        std::vector<std::thread> threads;
+        for (int t = 0; t < num_threads; t++) {
+            threads.push_back(std::thread(worker_function, t));
+        }
+        
+        // Aguardar até que a fila esteja vazia
+        while (true) {
+            {
+                std::lock_guard<std::mutex> lock(queue_mutex);
+                if (task_queue.empty()) {
+                    processing_complete = true;
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
+            // Status do processamento
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << "Tarefas restantes na fila: ";
+            {
+                std::lock_guard<std::mutex> qlock(queue_mutex);
+                std::cout << task_queue.size() << std::endl;
+            }
+        }
+        
+        // Aguardar todas as threads finalizarem
+        std::cout << "Aguardando conclusão de " << threads.size() << " threads..." << std::endl;
+        for (auto& thread : threads) {
+            thread.join();
+        }
+        std::cout << "Todas as threads concluídas." << std::endl;
+        
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end_time - start_time;
-        std::cout << "A* FINAL execution time: " << duration.count() << " seconds" << std::endl;
-    
+        std::cout << "Processamento concluído em: " << duration.count() << " segundos" << std::endl;
+        std::cout << "Total de caminhos encontrados: " << startToEnd.size() << std::endl;
+        std::cout << "Total de arestas encontradas (contador atômico): " << total_edges_found << std::endl;
+        
+        // Salvar os caminhos em um arquivo
         saveMapToBinaryFile(startToEnd, filename);
+        std::cout << "Caminhos salvos em: " << filename << std::endl;
     }
+
+        
 
     std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
     {
-        destinationEdges.clear();
         
         
         struct Node {
@@ -758,7 +981,6 @@ while (!positionFound && probeCount < hashTableSize) {
         float new_x = 0.0, new_y = 0.0, new_z = 0.0;
         bool findNavigableVertice = false;
         
-        // Find navigable vertices near start
         for(int i = 1; i <= 2; i++)
         {
             for (int a = 0; a < 26; a++) 
@@ -786,7 +1008,6 @@ while (!positionFound && probeCount < hashTableSize) {
             return {};
         }
         
-        // Find navigable vertices near goal
         bool findNavigableGoalVertice = false;
         
         for(int i = 1; i <= 2; i++)
@@ -1286,11 +1507,7 @@ while (!positionFound && probeCount < hashTableSize) {
             shortestPathEdges.push_back({u, v});
         }
 
-        // std::vector<std::tuple<float, float, float>> reversedPath = path;
-        // std::reverse(reversedPath.begin(), reversedPath.end());
-
         std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair1 = std::make_pair(path[0], path[path.size() - 1]);
-        // std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair2 = std::make_pair(reversedPath[0], path[0]);
     
         
        
@@ -1303,10 +1520,7 @@ while (!positionFound && probeCount < hashTableSize) {
            
 
             startToEnd[pair1].push_back(path[i]);
-            // startToEnd[pair2].push_back(reversedPath[i]);
 
-            
-            
             
             // Acessando os elementos da tupla
             vertex.x = std::get<0>(path[i]);
