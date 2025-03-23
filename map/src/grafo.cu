@@ -1072,8 +1072,8 @@ void trainAStarCUDA() {
     size_t totalPathPairs = (validPointCount * (validPointCount - 1)) / 2;
     std::cout << "Total path pairs to calculate: " << totalPathPairs << std::endl;
     
-    const size_t batchSize = 12000;
-    const size_t maxPathLength = 12000;
+    const size_t batchSize = 8192;
+    const size_t maxPathLength = 8192;
     
     size_t processedPaths = 0; 
     size_t successfulPaths = 0;

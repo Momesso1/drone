@@ -161,17 +161,17 @@ private:
 
 
     size_t i_ = 0; 
-    int diagonalEdges_;
+    int temp_ = 1, maxSize = 0, diagonalEdges_, xVertices, yVertices;
     float resolution_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-   
-    float z_min_;
+    float x_min_, x_max_;
+    float y_min_, y_max_;
+    float z_min_, z_max_;
+    int totalVertices;
+    int zVertices;
 
     int decimals = 0;
-    std::thread processing_thread_;
-    std::thread processing_thread_aStar;
-
 
     std::tuple<float, float, float> globalGoalIndex;
     std::tuple<float, float, float> globalIndex;
@@ -180,11 +180,12 @@ private:
     std::vector<VertexDijkstra> verticesDestino_;
     std::vector<VertexDijkstra> verticesDijkstra;
     std::vector<Edge> shortestPathEdges;
-    std::vector<std::tuple<float, float, float>> lastPath;
+    
+
     
     std::unordered_map<int, std::vector<int>> adjacency_list;
+    //std::unordered_map<int, std::unordered_set<std::pair<int, int>, PairHash>> adjacency_list;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
-    std::unordered_set<std::tuple<float, float, float>> obstaclesVerticesCopy;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
     inline float roundToMultiple(float value, float multiple, int decimals) {
@@ -899,188 +900,11 @@ private:
     }
 
 
-    void fixPath()
-    {
-        while (rclcpp::ok())
-        {
-            obstaclesVertices = obstaclesVerticesCopy;
-
-            if(!obstaclesVertices.empty() && !lastPath.empty())
-            {
-                auto start_time_ = std::chrono::high_resolution_clock::now();
-            
-                std::vector<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>> segments;
-                bool start = false;
-                int i = 0;
-                std::tuple<float, float, float> tupleBefore = std::make_tuple(0.0f, 0.0f, 0.0f); 
-                std::tuple<float, float, float> startTuple = std::make_tuple(0.0f, 0.0f, 0.0f);
-                std::vector<std::pair<int, int>> mergedIntervals;
-            
-                int j = 0, k = 0, l = 0;
-                
-                for (const auto& tuple : lastPath) 
-                {
-                    if (obstaclesVertices.find(tuple) != obstaclesVertices.end() && start == false) 
-                    {
-                        
-                        std::pair<int, int> intervalLastPath = std::make_pair(j, l - 1);
-                        mergedIntervals.push_back(intervalLastPath);
-
-                        k = l;
-                        startTuple = tupleBefore;
-                        start = true;
-                    }
-                    
-                    if (obstaclesVertices.find(tuple) == obstaclesVertices.end() && start == true) 
-                    {
-                        std::tuple<float, float, float> endTuple = tuple;
-                        std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair = std::make_pair(startTuple, endTuple);
-                        j = l;
-            
-                        std::pair<int, int> intervalPair = std::make_pair(k, j);
-                    
-                        mergedIntervals.push_back(intervalPair);
-                        segments.push_back(pair);
-            
-                        i++;
-                        start = false;
-                    }
-            
-                    l++;
-                    tupleBefore = tuple; 
-                }
-                
-                if (!start && l > 0 && k < lastPath.size()) 
-                {
-                    std::pair<int, int> intervalLastPath = std::make_pair(k, l - 1);
-                    mergedIntervals.push_back(intervalLastPath);
-                }
-                
-                if (!segments.empty()) 
-                {
-                    std::vector<std::vector<std::tuple<float, float, float>>> paths(segments.size());
-                    int pathIndex = 0;
-                    for (const auto& segment : segments) 
-                    {
-                        float start[3];
-                        float end[3];
-                
-                        start[0] = std::get<0>(segment.first);
-                        start[1] = std::get<1>(segment.first);
-                        start[2] = std::get<2>(segment.first);
-                
-                        end[0] = std::get<0>(segment.second);
-                        end[1] = std::get<1>(segment.second);
-                        end[2] = std::get<2>(segment.second);
-                
-                        std::vector<std::tuple<float, float, float>> shortestPath = runAStar(start, end);
-                        paths[pathIndex] = shortestPath;  
-                        pathIndex++;
-                    }
-            
-                    std::vector<std::tuple<float, float, float>> finalPath;
-                    bool useOriginalPath = true;
-                    int pathCounter = 0;
-            
-                    for (size_t i = 0; i < mergedIntervals.size(); i++) 
-                    {
-                        auto interval = mergedIntervals[i];
-                        
-                        if (useOriginalPath) 
-                        {
-                            for (int idx = interval.first; idx <= interval.second && idx < static_cast<int>(lastPath.size()); idx++) 
-                            {
-                                finalPath.push_back(lastPath[idx]);
-                            }
-                        } 
-                        else if (pathCounter < static_cast<int>(paths.size())) 
-                        {
-                            for (const auto& point : paths[pathCounter]) 
-                            {
-                                
-                                finalPath.push_back(point);
-                            }
-                            pathCounter++;
-                        }
-                        
-                        useOriginalPath = !useOriginalPath;
-                    }
-
-            
-                    storeEdgesInPath(finalPath);
-                    
-                    auto end_time = std::chrono::high_resolution_clock::now();
-                    std::chrono::duration<float> duration = end_time - start_time_;  
-                    lastPath = finalPath;
-            
-                    RCLCPP_INFO(this->get_logger(), "Path fixed in: %.10f seconds", duration.count());
-                } 
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-       
-    }
-
-    void prepareAStar()
-    {
-        while (rclcpp::ok())
-        {
-            obstaclesVertices = obstaclesVerticesCopy;
-            if(!verticesDestino_.empty() )
-            {
-
-                float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
-                float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
-                float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
-
-                float distanciaAteODestino = sqrt(dx * dx + dy * dy + dz * dz);
-
-                if(distanciaAteODestino <= distanceToObstacle_)
-                {
-                    i_ = i_ + 1;
-                }
-
-        
-                float array_inicial[3] = {pose_x_, pose_y_, pose_z_};
-                float array_final[3] = {static_cast<float>(verticesDestino_[i_].x), static_cast<float>(verticesDestino_[i_].y), static_cast<float>(verticesDestino_[i_].z)};
-                
-                if(i_ == verticesDestino_.size())
-                {
-                    i_ = 0;
-                }
-
-                
-                
-                
-                auto start_time_ = std::chrono::high_resolution_clock::now();
-
-            
-                std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-            
-                storeEdgesInPath(shortestPath);
-
-               lastPath = shortestPath;
-            
-                auto end_time = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<float> duration = end_time - start_time_;  
-
-                adjacency_list.clear();
-
-                RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-
-
-        }
-    }
-
-
     /*
 
         PUBLISHERS.
 
     */
-
 
     
     void publisher_dijkstra()
@@ -1161,7 +985,43 @@ private:
             verticesDestino_.push_back(destino);
         }
         
+         
+        if(!verticesDestino_.empty())
+        {
+        
+            float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
+            float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
+            float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
+
+            float distanciaAteODestino = sqrt(dx * dx + dy * dy + dz * dz);
+
+            if(distanciaAteODestino <= distanceToObstacle_)
+            {
+                i_ = i_ + 1;
+            }
+
        
+            float array_inicial[3] = {pose_x_, pose_y_, pose_z_};
+            float array_final[3] = {static_cast<float>(verticesDestino_[i_].x), static_cast<float>(verticesDestino_[i_].y), static_cast<float>(verticesDestino_[i_].z)};
+            
+            if(i_ == verticesDestino_.size())
+            {
+                i_ = 0;
+            }
+            
+            auto start_time_ = std::chrono::high_resolution_clock::now();
+            std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
+           
+            storeEdgesInPath(shortestPath);
+           
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<float> duration = end_time - start_time_;  
+
+            adjacency_list.clear();
+
+            RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
+       
+        }
     }
 
     void callback_removed_navigable_vertices(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -1183,13 +1043,11 @@ private:
                 roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
             );
 
-            obstaclesVerticesCopy.insert(index);
+            obstaclesVertices.insert(index);
             
         }
-
-
        
-
+        
     }
 
    
@@ -1241,7 +1099,7 @@ public:
     {
     
      
-        this->declare_parameter<double>("distanceToObstacle", 0.1);
+        this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
 
 
@@ -1253,16 +1111,14 @@ public:
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
 
-
-        processing_thread_ = std::thread(&AStar::fixPath, this);
-        processing_thread_aStar = std::thread(&AStar::prepareAStar, this);
-
+        parameterTimer = this->create_wall_timer(
+            std::chrono::seconds(2),
+            std::bind(&AStar::check_parameters, this));
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
             std::bind(&AStar::check_parameters, this));
 
-       
         decimals = countDecimals(distanceToObstacle_);
        
  
