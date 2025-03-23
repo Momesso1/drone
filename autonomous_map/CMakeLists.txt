@@ -23,6 +23,9 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(yolo_msgs REQUIRED)
 find_library(XXHASH_LIBRARY xxhash REQUIRED)
+find_package(OpenMP REQUIRED)
+find_library(OpenMP_CXX_LIBRARIES REQUIRED)
+
 add_executable(create_graph src/create_graph.cpp)
 ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
 
@@ -64,6 +67,7 @@ target_link_libraries(a_estrela
   ${std_msgs_LIBRARIES}
   ${GLEW_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${OpenMP_CXX_LIBRARIES} 
 )
 
 

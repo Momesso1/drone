@@ -12,10 +12,11 @@ def generate_launch_description():
     
     # Definindo os parâmetros a serem usados nos nós
     parameters = [{
-        "distanceToObstacle": 0.25,
+        "distanceToObstacle": 0.1,
         "diagonalEdges": 3,
-        "maxSecurityDistance": 0.25,
-        "maxSecurityHeightDistance": 0.25,
+        "maxSecurityDistance": 0.20,
+        "maxSecurityHeightDistance": 0.20,
+        "multi_thread": True,
     }]
 
   

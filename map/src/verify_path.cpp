@@ -652,13 +652,13 @@ private:
             }
 
 
-            //bool isValid = verifyFileContent(filename);
+            bool isValid = verifyFileContent(filename);
 
-            //if (isValid) {
-            //    std::cout << "Verificação do arquivo concluída com sucesso!" << std::endl;
-            //} else {
-            //     std::cout << "Falha na verificação do arquivo." << std::endl;
-            //}
+            if (isValid) {
+               std::cout << "Verificação do arquivo concluída com sucesso!" << std::endl;
+            } else {
+                std::cout << "Falha na verificação do arquivo." << std::endl;
+            }
            
            
             auto end_time = std::chrono::high_resolution_clock::now();
