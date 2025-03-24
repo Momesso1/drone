@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(autonomous_map)
 
-# Default to C++14
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -23,8 +22,6 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(yolo_msgs REQUIRED)
 find_library(XXHASH_LIBRARY xxhash REQUIRED)
-find_package(OpenMP REQUIRED)
-find_library(OpenMP_CXX_LIBRARIES REQUIRED)
 
 add_executable(create_graph src/create_graph.cpp)
 ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
@@ -32,8 +29,11 @@ ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PC
 add_executable(docking_node src/docking_node.cpp)
 ament_target_dependencies(docking_node rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs tf2_geometry_msgs)
 
-add_executable(a_estrela src/a_estrela.cpp)
-ament_target_dependencies(a_estrela rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+add_executable(a_star src/a_star.cpp)
+ament_target_dependencies(a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
+add_executable(visualize_a_star src/visualize_a_star.cpp)
+ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 add_executable(send_poses src/send_poses.cpp)
 ament_target_dependencies(send_poses rclcpp nav_msgs geometry_msgs yaml-cpp PCL pcl_conversions nav_msgs tf2_geometry_msgs sensor_msgs yolo_msgs)
@@ -62,12 +62,18 @@ target_link_libraries(docking_node
 )
 
 
-target_link_libraries(a_estrela
+target_link_libraries(a_star
   ${rclcpp_LIBRARIES}
   ${std_msgs_LIBRARIES}
   ${GLEW_LIBRARIES}
   ${PCL_LIBRARIES}
-  ${OpenMP_CXX_LIBRARIES} 
+)
+
+target_link_libraries(visualize_a_star
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
 )
 
 
@@ -107,8 +113,9 @@ install(TARGETS
   create_graph
   docking_node
   send_poses
-  a_estrela
+  a_star
   controller
+  visualize_a_star
   save_point_cloud
   DESTINATION lib/${PROJECT_NAME}
 )

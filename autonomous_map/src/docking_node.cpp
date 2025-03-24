@@ -78,9 +78,7 @@ private:
     int temp_ = 1;
     double x_atual_, y_atual_;
     double distanceToObstacle_, resolution_;
-    double dockingPositionX_, dockingPositionY_, dockingPositionZ_; 
-    double dockingOrientationX_, dockingOrientationY_, dockingOrientationZ_, dockingOrientationW_;
-
+  
     double roundToMultiple(double value, double multiple) 
     {
         return std::round(value / multiple) * multiple;

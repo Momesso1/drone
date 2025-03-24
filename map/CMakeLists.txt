@@ -18,19 +18,12 @@ find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(OpenMP REQUIRED)
-find_library(OpenMP_CXX_LIBRARIES REQUIRED)
 
 add_executable(create_graph src/create_graph.cpp)
 ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
 
 add_executable(verify_path src/verify_path.cpp)
 ament_target_dependencies(verify_path rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
-
-
-add_executable(a_estrela src/a_estrela.cpp)
-ament_target_dependencies(a_estrela rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs OpenMP)
-
 
 
 target_link_libraries(create_graph
@@ -47,16 +40,6 @@ target_link_libraries(verify_path
 
 
 
-
-target_link_libraries(a_estrela
-  ${rclcpp_LIBRARIES}
-  ${std_msgs_LIBRARIES}
-  ${PCL_LIBRARIES}
-  ${OpenMP_CXX_LIBRARIES} 
-)
-
-
-
 install(
   DIRECTORY
     launch
@@ -67,7 +50,6 @@ install(
 
 install(TARGETS
   create_graph
-  a_estrela
   verify_path
   
   DESTINATION lib/${PROJECT_NAME}

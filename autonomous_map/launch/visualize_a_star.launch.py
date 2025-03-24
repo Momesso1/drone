@@ -12,7 +12,7 @@ def generate_launch_description():
     
     # Definindo os parâmetros a serem usados nos nós
     parameters = [{
-        "distanceToObstacle": 0.1,
+        "distanceToObstacle": 0.2,
         "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
@@ -24,9 +24,11 @@ def generate_launch_description():
       
     return LaunchDescription([
 
+        
+
         Node(
             package='autonomous_map',
-            executable='a_estrela',
+            executable='visualize_a_star',
             output='screen',
             parameters=parameters,
         ),

@@ -386,7 +386,7 @@ public:
     : Node("graph_publisher"), count_(0)
     {   
        
-        this->declare_parameter<double>("distanceToObstacle", 0.05);
+        this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<double>("maxSecurityDistance", 0.25);
         this->declare_parameter<double>("maxSecurityHeightDistance", 0.0);
 

@@ -264,16 +264,11 @@ private:
 
 
     size_t i_ = 0; 
-    int temp_ = 1, maxSize = 0, diagonalEdges_, xVertices, yVertices;
-    float resolution_;
+    int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-    float x_min_, x_max_;
-    float y_min_, y_max_;
-    float z_min_, z_max_;
-    int totalVertices;
-    int zVertices;
-
+    float z_min_;
+ 
     int decimals = 0;
 
     std::tuple<float, float, float> globalGoalIndex;
@@ -825,7 +820,6 @@ private:
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
-            resolution_ = 1;
             std::cout << "\n" << std::endl;
             RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
             RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          

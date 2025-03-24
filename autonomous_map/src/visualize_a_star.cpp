@@ -7,6 +7,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <string>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -32,9 +33,8 @@
 #include <iomanip>
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include <filesystem>
-#include <fstream>
-#include <cstdint>
-#include <omp.h>
+
+
 using namespace std::chrono_literals;
 
 namespace std 
@@ -93,16 +93,6 @@ std::ostream& operator<<(std::ostream& os, const std::tuple<T1, T2, T3>& t) {
 class AStar : public rclcpp::Node {
 
 private:
-    
-
-    struct TupleHash 
-    {
-        size_t operator()(const std::tuple<float, float, float>& t) const {
-            return std::hash<float>()(std::get<0>(t)) ^ 
-                (std::hash<float>()(std::get<1>(t)) << 1) ^ 
-                (std::hash<float>()(std::get<2>(t)) << 2);
-        }
-    };
 
 
     struct Vertex {
@@ -151,129 +141,10 @@ private:
         }
     };
 
-    struct PairTupleHash {
-        std::size_t operator()(const std::pair<std::tuple<float, float, float>, 
-                            std::tuple<float, float, float>>& p) const {
-            auto hash1 = std::hash<float>{}(std::get<0>(p.first)) ^ 
-                        (std::hash<float>{}(std::get<1>(p.first)) << 1) ^ 
-                        (std::hash<float>{}(std::get<2>(p.first)) << 2);
-            
-            auto hash2 = std::hash<float>{}(std::get<0>(p.second)) ^ 
-                        (std::hash<float>{}(std::get<1>(p.second)) << 1) ^ 
-                        (std::hash<float>{}(std::get<2>(p.second)) << 2);
-            
-            return hash1 ^ (hash2 << 1);
-        }
-    };
-
-    struct PairHashTuple {
-        template <typename T>
-        std::size_t hash_tuple(const T& t) const {
-            std::size_t seed = 0;
-            auto hash_combine = [&seed](auto& v) {
-                seed ^= std::hash<std::decay_t<decltype(v)>>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            };
-            std::apply([&](auto&&... args) { (hash_combine(args), ...); }, t);
-            return seed;
-        }
-    
-        std::size_t operator()(const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p) const {
-            std::size_t h1 = hash_tuple(p.first);
-            std::size_t h2 = hash_tuple(p.second);
-            return h1 ^ (h2 << 1); // Combinação dos hashes
-        }
-    };
-
-    struct PairTupleEqual {
-        bool operator()(const std::pair<std::tuple<float, float, float>, 
-                    std::tuple<float, float, float>>& p1,
-                    const std::pair<std::tuple<float, float, float>, 
-                    std::tuple<float, float, float>>& p2) const {
-            return p1.first == p2.first && p1.second == p2.second;
-        }
-    };
-
-    struct PairHash1 {
-        std::size_t operator()(const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p) const {
-            std::size_t h1 = std::hash<float>{}(std::get<0>(p.first)) ^ 
-                            (std::hash<float>{}(std::get<1>(p.first)) << 1) ^
-                            (std::hash<float>{}(std::get<2>(p.first)) << 2);
-            
-            std::size_t h2 = std::hash<float>{}(std::get<0>(p.second)) ^
-                            (std::hash<float>{}(std::get<1>(p.second)) << 1) ^
-                            (std::hash<float>{}(std::get<2>(p.second)) << 2);
-                            
-            return h1 ^ (h2 << 1);
-        }
-    };
-
-    struct PairEqual {
-        bool operator()(const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p1,
-                        const std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>& p2) const {
-            return std::get<0>(p1.first) == std::get<0>(p2.first) &&
-                   std::get<1>(p1.first) == std::get<1>(p2.first) &&
-                   std::get<2>(p1.first) == std::get<2>(p2.first) &&
-                   std::get<0>(p1.second) == std::get<0>(p2.second) &&
-                   std::get<1>(p1.second) == std::get<1>(p2.second) &&
-                   std::get<2>(p1.second) == std::get<2>(p2.second);
-        }
-    };
-
-   
-    struct FileHeader {
-        uint32_t hashTableSize; 
-        uint32_t numEntries;     
-        uint32_t dataStartOffset; 
-    };
-
-   
-    struct HashEntry {
-        bool occupied;  
-        float key_first_x, key_first_y, key_first_z;
-        float key_second_x, key_second_y, key_second_z;
-        uint32_t dataOffset; 
-        uint32_t dataSize;   
-    };
-
-
-    using Point3D = std::tuple<float, float, float>;
-    using KeyPair = std::pair<Point3D, Point3D>;
-    using PointVector = std::vector<Point3D>;
-    using ComplexMap = std::unordered_map<KeyPair, PointVector, PairTupleHash, PairTupleEqual>;
-
-
-    uint32_t hashAddress(const KeyPair& key, uint32_t tableSize) 
-    {
-        PairTupleHash hasher;
-        return hasher(key) % tableSize;
-    }
-
-    uint32_t recommendedHashTableSize(uint32_t numItems) 
-    {
-        static const uint32_t primes[] = 
-        {
-            53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 
-            98317, 196613, 393241, 786433, 1572869, 3145739, 6291469
-        };
-        
-        uint32_t target = numItems * 3 / 2;
-        
-        for (uint32_t prime : primes) {
-            if (prime > target) {
-                return prime;
-            }
-        }
-        
-        return primes[sizeof(primes) / sizeof(primes[0]) - 1];
-    }
-
-
-    
-
  
     //Publishers.
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_navegable_vertices_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_created_vertices;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
 
     //Subscriptions.
@@ -290,15 +161,12 @@ private:
 
 
     size_t i_ = 0; 
-    int temp_ = 1, maxSize = 0, diagonalEdges_, xVertices, yVertices;
+    int diagonalEdges_;
     float resolution_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-    float x_min_, x_max_;
-    float y_min_, y_max_;
-    float z_min_, z_max_;
-    int totalVertices;
-    int zVertices;
+    float z_min_;
+ 
 
     int decimals = 0;
 
@@ -311,305 +179,10 @@ private:
     std::vector<Edge> shortestPathEdges;
     
 
+    std::unordered_set<std::tuple<float, float,float>> createdVertices;
     std::unordered_map<int, std::vector<int>> adjacency_list;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
-    std::unordered_map<std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>, std::vector<std::tuple<float, float, float>>,  PairHashTuple> startToEnd;
-
-
-    bool saveMapToBinaryFile(
-        const std::unordered_map<
-            std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
-            std::vector<std::tuple<float, float, float>>,
-            PairHash1, PairEqual>& map, 
-        const std::string& filename)
-    {
-        // Verificar se o mapa está vazio
-        if (map.empty()) {
-            std::cerr << "Erro: O mapa está vazio" << std::endl;
-            return false;
-        }
-
-        // Abrir o arquivo com verificação explícita
-        std::fstream file(filename, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!file.is_open()) {
-            std::cerr << "Erro ao abrir o arquivo para escrita: " << filename << std::endl;
-            return false;
-        }
-
-        // Verificar permissões de escrita
-        file << "test";
-        if (file.fail()) {
-            std::cerr << "Erro: Não foi possível escrever no arquivo. Verifique as permissões." << std::endl;
-            file.close();
-            return false;
-        }
-        
-        // Reiniciar o arquivo
-        file.close();
-        file.open(filename, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!file.is_open()) {
-            std::cerr << "Erro ao reabrir o arquivo: " << filename << std::endl;
-            return false;
-        }
-        
-        // Calcular o tamanho da tabela hash
-        uint32_t hashTableSize = recommendedHashTableSize(map.size() * 2); // Dobrar o tamanho para evitar colisões
-        // std::cout << "Tamanho da tabela hash: " << hashTableSize << std::endl;
-        // std::cout << "Número de entradas no mapa: " << map.size() << std::endl;
-        
-        // Escrever o cabeçalho do arquivo
-        FileHeader header;
-        header.hashTableSize = hashTableSize;
-        header.numEntries = map.size();
-        header.dataStartOffset = sizeof(FileHeader) + hashTableSize * sizeof(HashEntry);
-        file.write(reinterpret_cast<char*>(&header), sizeof(FileHeader));
-        
-        if (file.fail()) {
-            std::cerr << "Erro ao escrever o cabeçalho" << std::endl;
-            file.close();
-            return false;
-        }
-        
-        // Inicializar a tabela hash com entradas vazias
-        HashEntry emptyEntry = {false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0};
-        for (uint32_t i = 0; i < hashTableSize; ++i) {
-            file.write(reinterpret_cast<const char*>(&emptyEntry), sizeof(HashEntry));
-            if (file.fail()) {
-                std::cerr << "Erro ao escrever a entrada vazia #" << i << std::endl;
-                file.close();
-                return false;
-            }
-        }
-        
-        // Verificar a posição atual do arquivo
-        std::streampos expectedOffset = sizeof(FileHeader) + hashTableSize * sizeof(HashEntry);
-        if (file.tellp() != expectedOffset) {
-            std::cerr << "Erro: Offset inesperado após escrever entradas vazias. Esperado: " 
-                    << expectedOffset << ", Atual: " << file.tellp() << std::endl;
-            file.close();
-            return false;
-        }
-        
-        // Posição atual no arquivo onde os dados começarão a ser escritos
-        uint32_t currentDataOffset = header.dataStartOffset;
-        // std::cout << "Offset inicial de dados: " << currentDataOffset << std::endl;
-        
-        // Variável para contar colisões
-        int collisionCount = 0;
-        
-        // Cria um arquivo de texto adicional para armazenar as chaves formatadas com espaço após as vírgulas
-        std::ofstream formattedKeysFile(filename + ".txt");
-        if (!formattedKeysFile.is_open()) {
-            // std::cerr << "Aviso: Não foi possível criar o arquivo de texto para chaves formatadas" << std::endl;
-            // Continuar mesmo assim, pois este é apenas um arquivo auxiliar
-        }
-        
-        // Processar todas as entradas do mapa
-        int entryCount = 0;
-        for (const auto& pair : map) 
-        {
-            entryCount++;
-            // std::cout << "Processando entrada #" << entryCount << "/" << map.size() << std::endl;
-            
-            // Calcular o endereço hash para esta chave
-            // Dentro do loop que processa cada entrada do map:
-            uint32_t originalAddress = hashAddress(pair.first, hashTableSize);
-            uint32_t address = originalAddress;
-            bool positionFound = false;
-            int probeCount = 0;
-            HashEntry entry;
-
-            while (!positionFound && probeCount < hashTableSize) {
-                // Posicionar o ponteiro para ler a entrada na posição calculada
-                file.seekg(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
-                if (file.fail()) {
-                    std::cerr << "Erro ao posicionar o ponteiro para leitura no endereço " << address << std::endl;
-                    file.close();
-                    formattedKeysFile.close();
-                    return false;
-                }
-                
-                file.read(reinterpret_cast<char*>(&entry), sizeof(HashEntry));
-                if (file.fail()) {
-                    std::cerr << "Erro ao ler a entrada no endereço " << address << std::endl;
-                    file.close();
-                    formattedKeysFile.close();
-                    return false;
-                }
-                
-                if (!entry.occupied) {
-                    positionFound = true;
-                    // std::cout << "Posição livre encontrada no endereço " << address << std::endl;
-                    break;
-                } else {
-                    collisionCount++;
-                    probeCount++;
-                    // Sondagem quadrática: o deslocamento é o quadrado do número de tentativas
-                    address = (originalAddress + probeCount * probeCount) % hashTableSize;
-                    // std::cout << "Colisão detectada. Tentativa " << probeCount 
-                    //           << ", novo endereço: " << address << std::endl;
-                }
-            }
-
-            if (!positionFound) {
-                std::cerr << "Erro: Não foi possível encontrar uma posição livre após " 
-                        << probeCount << " tentativas" << std::endl;
-                file.close();
-                formattedKeysFile.close();
-                return false;
-            }
-                        
-            // Preencher os dados da entrada
-            entry.occupied = true;
-            auto [key_first_x, key_first_y, key_first_z] = pair.first.first;
-            auto [key_second_x, key_second_y, key_second_z] = pair.first.second;
-            entry.key_first_x = key_first_x;
-            entry.key_first_y = key_first_y;
-            entry.key_first_z = key_first_z;
-            entry.key_second_x = key_second_x;
-            entry.key_second_y = key_second_y;
-            entry.key_second_z = key_second_z;
-            entry.dataOffset = currentDataOffset;
-            
-            // Exibir os dados no console com espaços após as vírgulas
-            // std::cout << "Dados da chave: (" 
-            //         << key_first_x << ", " << key_first_y << ", " << key_first_z << ") -> ("
-            //         << key_second_x << ", " << key_second_y << ", " << key_second_z << ")" << std::endl;
-            // std::cout << "Offset de dados: " << currentDataOffset << std::endl;
-            
-            // Salvar os dados formatados no arquivo de texto auxiliar
-            if (formattedKeysFile.is_open()) {
-                formattedKeysFile << "Índice: " << address << ", Chave: (" 
-                    << key_first_x << ", " << key_first_y << ", " << key_first_z << ") -> ("
-                    << key_second_x << ", " << key_second_y << ", " << key_second_z << ")" << std::endl;
-                
-                formattedKeysFile << "  Offset: " << currentDataOffset 
-                    << ", Pontos: " << pair.second.size() << std::endl;
-                
-                // Também podemos salvar os pontos no arquivo de texto
-                int pointIndex = 0;
-                for (const auto& point : pair.second) {
-                    float x, y, z;
-                    std::tie(x, y, z) = point;
-                    formattedKeysFile << "    Ponto " << pointIndex++ << ": (" 
-                        << x << ", " << y << ", " << z << ")" << std::endl;
-                }
-                // formattedKeysFile << "  ------------------------------" << std::endl;
-            }
-            
-            // Posicionar o ponteiro de escrita no offset de dados correto
-            file.seekp(currentDataOffset, std::ios::beg);
-            if (file.fail()) {
-                // std::cerr << "Erro ao posicionar o ponteiro para escrita no offset " << currentDataOffset << std::endl;
-                file.close();
-                formattedKeysFile.close();
-                return false;
-            }
-            
-            // Escrever o tamanho do vetor
-            uint32_t vectorSize = pair.second.size();
-            file.write(reinterpret_cast<char*>(&vectorSize), sizeof(uint32_t));
-            if (file.fail()) {
-                // std::cerr << "Erro ao escrever o tamanho do vetor: " << vectorSize << std::endl;
-                file.close();
-                formattedKeysFile.close();
-                return false;
-            }
-            
-            // std::cout << "Tamanho do vetor: " << vectorSize << " pontos" << std::endl;
-            
-            // Escrever cada ponto no vetor
-            for (const auto& point : pair.second) {
-                float x, y, z;
-                std::tie(x, y, z) = point;
-                file.write(reinterpret_cast<const char*>(&x), sizeof(float));
-                file.write(reinterpret_cast<const char*>(&y), sizeof(float));
-                file.write(reinterpret_cast<const char*>(&z), sizeof(float));
-                
-                if (file.fail()) {
-                    // std::cerr << "Erro ao escrever o ponto (" << x << ", " << y << ", " << z << ")" << std::endl;
-                    file.close();
-                    formattedKeysFile.close();
-                    return false;
-                }
-            }
-            
-            // Calcular o tamanho total dos dados para esta entrada
-            entry.dataSize = sizeof(uint32_t) + vectorSize * (3 * sizeof(float));
-            currentDataOffset += entry.dataSize;
-            
-            // std::cout << "Tamanho dos dados: " << entry.dataSize << " bytes" << std::endl;
-            // std::cout << "Próximo offset de dados: " << currentDataOffset << std::endl;
-            
-            // Escrever a entrada atualizada na tabela hash
-            file.seekp(sizeof(FileHeader) + address * sizeof(HashEntry), std::ios::beg);
-            if (file.fail()) {
-                // std::cerr << "Erro ao posicionar o ponteiro para escrita na tabela hash, endereço " << address << std::endl;
-                file.close();
-                formattedKeysFile.close();
-                return false;
-            }
-            
-            file.write(reinterpret_cast<const char*>(&entry), sizeof(HashEntry));
-            if (file.fail()) {
-                // std::cerr << "Erro ao escrever a entrada na tabela hash" << std::endl;
-                file.close();
-                formattedKeysFile.close();
-                return false;
-            }
-            
-            // std::cout << "Entrada #" << entryCount << " gravada com sucesso" << std::endl;
-            // std::cout << "------------------------------" << std::endl;
-        }
-        
-        // Fechar o arquivo de texto formatado
-        if (formattedKeysFile.is_open()) {
-            formattedKeysFile.close();
-        }
-        
-        // Forçar a gravação em disco
-        file.flush();
-        
-        // Verificar o tamanho final do arquivo
-        file.seekp(0, std::ios::end);
-        std::streampos fileSize = file.tellp();
-        // std::cout << "Tamanho final do arquivo: " << fileSize << " bytes" << std::endl;
-        
-        if (fileSize == 0 || fileSize < currentDataOffset) {
-            // std::cerr << "Erro: Tamanho do arquivo inconsistente" << std::endl;
-            file.close();
-            return false;
-        }
-        
-        file.close();
-        
-        // Verificar se o arquivo existe e tem o tamanho esperado
-        std::ifstream checkFile(filename, std::ios::binary);
-        if (!checkFile.is_open()) {
-            // std::cerr << "Erro: Não foi possível abrir o arquivo para verificação" << std::endl;
-            return false;
-        }
-        
-        checkFile.seekg(0, std::ios::end);
-        std::streampos checkSize = checkFile.tellg();
-        checkFile.close();
-        
-        // std::cout << "Verificação final do arquivo: " << checkSize << " bytes" << std::endl;
-        
-        if (checkSize == 0) {
-            std::cerr << "Erro: O arquivo está vazio após a gravação" << std::endl;
-            return false;
-        }
-        
-        std::cout << "Arquivo salvo com sucesso: " << filename << std::endl;
-        std::cout << "Entradas gravadas: " << entryCount << " de " << map.size() << std::endl;
-        std::cout << "Arquivo de texto com chaves formatadas: " << filename << ".txt" << std::endl;
-        
-        return true;
-    }
-
-        
 
     inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
@@ -647,7 +220,7 @@ private:
         }
         return decimals;
     }
-
+    
 
     
 
@@ -699,266 +272,10 @@ private:
 
         };
     }
-   
     
-    void trainAStar() 
-    {
-        const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths2.bin";
-        std::cout << "Iniciando otimização do A*." << std::endl;
-    
-        // VERIFICAÇÃO DO AMBIENTE OPENMP
-        #ifdef _OPENMP
-            std::cout << "OpenMP está habilitado na compilação." << std::endl;
-        #else
-            std::cout << "OpenMP NÃO está habilitado na compilação!" << std::endl;
-        #endif
-        
-        // Força explicitamente todas as 24 threads
-        omp_set_num_threads(24);
-        
-        // VERIFICA SE O AMBIENTE CONSEGUE USAR MAIS DE UMA THREAD
-        int max_threads = omp_get_max_threads();
-        std::cout << "Threads máximas disponíveis: " << max_threads << std::endl;
-        
-        if (max_threads <= 1) {
-            std::cout << "AVISO: Seu ambiente permite apenas 1 thread!" << std::endl;
-            std::cout << "Verifique se a variável OMP_NUM_THREADS está definida corretamente." << std::endl;
-        }
-        
-        // Testa se realmente consegue usar múltiplas threads
-        int thread_count = 0;
-        #pragma omp parallel
-        {
-            #pragma omp atomic
-            thread_count++;
-        }
-        std::cout << "Threads realmente ativadas: " << thread_count << std::endl;
-        
-        // Se não conseguiu usar todas as threads, vamos forçar manualmente
-        if (thread_count < max_threads) {
-            std::cout << "FORÇANDO paralelização manual com threads" << std::endl;
-        }
-    
-        // 1. Pré-calcule todos os pontos válidos (não-obstáculo)
-        std::vector<std::tuple<float, float, float>> validPoints;
-        
-        auto start_phase1 = std::chrono::high_resolution_clock::now();
-        
-        // Coletando pontos válidos
-        for (float z = z_min_; z <= z_max_; z += distanceToObstacle_) {
-            for (float y = y_min_; y <= y_max_; y += distanceToObstacle_) {
-                for (float x = x_min_; x <= x_max_; x += distanceToObstacle_) {
-                    float new_x = roundToMultiple(x, distanceToObstacle_, decimals);
-                    float new_y = roundToMultiple(y, distanceToObstacle_, decimals);
-                    float new_z = roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
-    
-                    // Normaliza valores zero, se necessário
-                    if(new_x == -0.0f)
-                        new_x = 0.0f;
-                    if(new_y == -0.0f)
-                        new_y = 0.0f;
-                    if(new_z == -0.0f)
-                        new_z = 0.0f;
-    
-                    auto pt = std::make_tuple(new_x, new_y, new_z);
-                    if (obstaclesVertices.find(pt) == obstaclesVertices.end()) {
-                        validPoints.push_back(pt);
-                    }
-                }
-            }
-        }
-        
-        auto end_phase1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration_phase1 = end_phase1 - start_phase1;
-        std::cout << "Fase 1 concluída em: " << duration_phase1.count() << " segundos" << std::endl;
-        std::cout << "Total de pontos válidos: " << validPoints.size() << std::endl;
-    
-        // Declaração do mapa global para armazenar os caminhos
-        std::unordered_map<
-            std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
-            std::vector<std::tuple<float, float, float>>,
-            PairHash1, PairEqual> startToEnd;
-    
-        auto start_time = std::chrono::high_resolution_clock::now();
-        
-        // Definir número de threads (usar quantidade de threads disponíveis)
-        int num_threads = std::max(24, max_threads);
-        std::cout << "Iniciando processamento com " << num_threads << " threads" << std::endl;
-        
-        // NOVA ABORDAGEM: Fila de trabalho compartilhada
-        // Criar uma fila de tarefas
-        std::queue<size_t> task_queue;
-        std::mutex queue_mutex;
-        std::mutex map_mutex;
-        std::mutex cout_mutex;
-        std::atomic<bool> processing_complete(false);
-        std::atomic<int> total_edges_found(0);
-        
-        // Preencher a fila com os índices dos pontos a serem processados
-        for (size_t i = 0; i < validPoints.size(); i++) {
-            task_queue.push(i);
-        }
-        
-        // Função que será executada por cada thread
-        auto worker_function = [&](int thread_id) {
-            auto thread_start = std::chrono::high_resolution_clock::now();
-            int local_edges_found = 0;
-            int points_processed = 0;
-            
-            // Mapa local para esta thread
-            std::unordered_map<
-                std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>>,
-                std::vector<std::tuple<float, float, float>>,
-                PairHash1, PairEqual> local_map;
-            
-            // Log de início
-            {
-                std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << "Thread " << thread_id << " iniciada" << std::endl;
-            }
-            
-            while (!processing_complete) {
-                // Obter próxima tarefa da fila
-                size_t point_index;
-                bool has_task = false;
-                
-                {
-                    std::lock_guard<std::mutex> lock(queue_mutex);
-                    if (!task_queue.empty()) {
-                        point_index = task_queue.front();
-                        task_queue.pop();
-                        has_task = true;
-                    }
-                }
-                
-                // Se não há mais tarefas, sair do loop
-                if (!has_task) {
-                    break;
-                }
-                
-                // Log para monitoramento (reduzido para evitar excesso de logs)
-                if (points_processed % 50 == 0) {
-                    std::lock_guard<std::mutex> lock(cout_mutex);
-                    std::cout << "Thread " << thread_id << " processando ponto " << point_index << std::endl;
-                }
-                
-                int edge_count = 0;
-                
-                // Comparar com todos os outros pontos (após o índice atual)
-                for (size_t j = point_index + 1; j < validPoints.size(); j++) {
-                    float array_inicial[3] = { 
-                        std::get<0>(validPoints[point_index]), 
-                        std::get<1>(validPoints[point_index]), 
-                        std::get<2>(validPoints[point_index]) 
-                    };
-                    
-                    float array_final[3] = { 
-                        std::get<0>(validPoints[j]), 
-                        std::get<1>(validPoints[j]), 
-                        std::get<2>(validPoints[j]) 
-                    };
-    
-                    std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-                    
-                    // Se um caminho válido foi encontrado, armazena no mapa local
-                    if (!shortestPath.empty()) {
-                        auto edge = std::make_pair(validPoints[point_index], validPoints[j]);
-                        local_map[edge] = shortestPath;
-                        edge_count++;
-                    }
-                }
-                
-                // Incrementar contadores
-                local_edges_found += edge_count;
-                points_processed++;
-                
-                // Log do progresso (a cada 10 pontos para reduzir número de logs)
-                if (points_processed % 10 == 0) {
-                    std::lock_guard<std::mutex> lock(cout_mutex);
-                    std::cout << "Thread " << thread_id << ", processou ponto " << point_index 
-                            << ": Arestas encontradas neste ponto: " << edge_count 
-                            << ", Total local: " << local_edges_found << std::endl;
-                }
-                
-                // Mesclar periodicamente para liberar memória
-                if (local_map.size() > 1000) {
-                    std::lock_guard<std::mutex> lock(map_mutex);
-                    for (const auto& edge : local_map) {
-                        startToEnd[edge.first] = edge.second;
-                    }
-                    local_map.clear();
-                }
-            }
-            
-            // Mesclar resultados finais
-            {
-                std::lock_guard<std::mutex> lock(map_mutex);
-                for (const auto& edge : local_map) {
-                    startToEnd[edge.first] = edge.second;
-                }
-                total_edges_found += local_edges_found;
-            }
-            
-            // Log de finalização
-            auto thread_end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> thread_duration = thread_end - thread_start;
-            
-            {
-                std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << "Thread " << thread_id << " finalizada em " << thread_duration.count() 
-                        << " segundos, processou " << points_processed << " pontos, "
-                        << "encontrou " << local_edges_found << " arestas." << std::endl;
-            }
-        };
-        
-        // Criar e iniciar as threads
-        std::vector<std::thread> threads;
-        for (int t = 0; t < num_threads; t++) {
-            threads.push_back(std::thread(worker_function, t));
-        }
-        
-        // Aguardar até que a fila esteja vazia
-        while (true) {
-            {
-                std::lock_guard<std::mutex> lock(queue_mutex);
-                if (task_queue.empty()) {
-                    processing_complete = true;
-                    break;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            
-            // Status do processamento
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "Tarefas restantes na fila: ";
-            {
-                std::lock_guard<std::mutex> qlock(queue_mutex);
-                std::cout << task_queue.size() << std::endl;
-            }
-        }
-        
-        // Aguardar todas as threads finalizarem
-        std::cout << "Aguardando conclusão de " << threads.size() << " threads..." << std::endl;
-        for (auto& thread : threads) {
-            thread.join();
-        }
-        std::cout << "Todas as threads concluídas." << std::endl;
-        
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time;
-        std::cout << "Processamento concluído em: " << duration.count() << " segundos" << std::endl;
-        std::cout << "Total de caminhos encontrados: " << startToEnd.size() << std::endl;
-        std::cout << "Total de arestas encontradas (contador atômico): " << total_edges_found << std::endl;
-        
-        // Salvar os caminhos em um arquivo
-        saveMapToBinaryFile(startToEnd, filename);
-        std::cout << "Caminhos salvos em: " << filename << std::endl;
-    }
-
-        
-
     std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
     {
+        destinationEdges.clear();
         
         
         struct Node {
@@ -981,6 +298,7 @@ private:
         float new_x = 0.0, new_y = 0.0, new_z = 0.0;
         bool findNavigableVertice = false;
         
+        // Find navigable vertices near start
         for(int i = 1; i <= 2; i++)
         {
             for (int a = 0; a < 26; a++) 
@@ -1008,6 +326,7 @@ private:
             return {};
         }
         
+        // Find navigable vertices near goal
         bool findNavigableGoalVertice = false;
         
         for(int i = 1; i <= 2; i++)
@@ -1080,6 +399,17 @@ private:
                 continue;
                 
             nodes[current].closed = true;
+
+            if(obstaclesVertices.find(current) == obstaclesVertices.end())
+            {
+                createdVertices.insert(current);
+
+                publish_created_vertices();
+    
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
+
             
             if (current != start_tuple && current != goal_tuple)
             {
@@ -1487,13 +817,27 @@ private:
         return {};
     }
 
+    std::vector<int> reconstructPath(const std::unordered_map<int, int> &came_from, int current) 
+    {
+        std::vector<int> path;
+        while (came_from.find(current) != came_from.end()) 
+        {
+            path.push_back(current);
+            current = came_from.at(current);
+        }
+
+        path.push_back(current);
+
+        std::reverse(path.begin(), path.end());
+            
+        
+        return path;
+    }
+
     void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
     {
         shortestPathEdges.clear();
         verticesDijkstra.clear();
-        const std::string filename = "/home/momesso/autonomous/src/map/config/savedPaths.bin";
-        
-        
     
         if (path.empty()) {
             return;
@@ -1506,21 +850,11 @@ private:
             int v = i + 1;
             shortestPathEdges.push_back({u, v});
         }
-
-        std::pair<std::tuple<float, float, float>, std::tuple<float, float, float>> pair1 = std::make_pair(path[0], path[path.size() - 1]);
     
-        
-       
         // Processar os vértices do caminho
         for (size_t i = 0; i < path.size(); i++) 
         {
-            
             VertexDijkstra vertex;
-
-           
-
-            startToEnd[pair1].push_back(path[i]);
-
             
             // Acessando os elementos da tupla
             vertex.x = std::get<0>(path[i]);
@@ -1570,8 +904,6 @@ private:
             // Adicionar o vértice processado à lista
             verticesDijkstra.push_back(vertex);
         }
-
-        
     }
 
 
@@ -1633,6 +965,46 @@ private:
         publisher_nav_path_->publish(path_msg);
     }
 
+    void publish_created_vertices()
+    {
+        sensor_msgs::msg::PointCloud2 cloud_msg_created_vertices;
+        cloud_msg_created_vertices.header.stamp = this->get_clock()->now();
+        cloud_msg_created_vertices.header.frame_id = "map";
+
+        // Configuração dos campos do PointCloud2
+        cloud_msg_created_vertices.height = 1;  // Ponto único em cada linha
+        cloud_msg_created_vertices.width = createdVertices.size(); // Quantidade de vértices
+        cloud_msg_created_vertices.is_dense = true;
+        cloud_msg_created_vertices.is_bigendian = false;
+        cloud_msg_created_vertices.point_step = 3 * sizeof(float); // x, y, z
+        cloud_msg_created_vertices.row_step = cloud_msg_created_vertices.point_step * cloud_msg_created_vertices.width;
+
+        // Adicionar campos de x, y, z
+        sensor_msgs::PointCloud2Modifier modifier(cloud_msg_created_vertices);
+        modifier.setPointCloud2FieldsByString(1, "xyz");
+        modifier.resize(cloud_msg_created_vertices.width);
+
+        // Preencher os dados do PointCloud2
+        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg_created_vertices, "x");
+        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg_created_vertices, "y");
+        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg_created_vertices, "z");
+        for (const auto& vertex : createdVertices) 
+        {
+           
+                *iter_x = std::get<0>(vertex);
+                *iter_y = std::get<1>(vertex);
+                *iter_z = std::get<2>(vertex);
+
+                ++iter_x;
+                ++iter_y;
+                ++iter_z;
+   
+            
+        }
+
+
+         publisher_created_vertices->publish(cloud_msg_created_vertices);
+    }
 
 
     /*
@@ -1642,7 +1014,96 @@ private:
     */
 
  
-    
+    void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
+    {
+        verticesDestino_.clear();
+        for (const auto& pose_in : msg->poses) {
+            VertexDijkstra destino;
+
+            destino.x = pose_in.position.x;
+            destino.y = pose_in.position.y;
+            destino.z = pose_in.position.z;
+
+            destino.orientation_x = pose_in.orientation.x;
+            destino.orientation_y = pose_in.orientation.y;
+            destino.orientation_z = pose_in.orientation.z;
+            destino.orientation_w = pose_in.orientation.w;
+
+            verticesDestino_.push_back(destino);
+        }
+        
+         
+        if(!verticesDestino_.empty())
+        {
+        
+            float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
+            float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
+            float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
+
+            float distanciaAteODestino = sqrt(dx * dx + dy * dy + dz * dz);
+
+            if(distanciaAteODestino <= distanceToObstacle_)
+            {
+                i_ = i_ + 1;
+            }
+
+       
+            float array_inicial[3] = {pose_x_, pose_y_, pose_z_};
+            float array_final[3] = {static_cast<float>(verticesDestino_[i_].x), static_cast<float>(verticesDestino_[i_].y), static_cast<float>(verticesDestino_[i_].z)};
+            
+            if(i_ == verticesDestino_.size())
+            {
+                i_ = 0;
+            }
+            
+            auto start_time_ = std::chrono::high_resolution_clock::now();
+            std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
+           
+            createdVertices.clear();
+            storeEdgesInPath(shortestPath);
+           
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<float> duration = end_time - start_time_;  
+
+            adjacency_list.clear();
+
+            RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
+       
+        }
+    }
+
+    void callback_removed_navigable_vertices(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+    {
+   
+        sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+        sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+        sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+
+        for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z)
+        {
+            float x = *iter_x;
+            float y = *iter_y;
+            float z = *iter_z;
+
+            auto index = std::make_tuple(
+                roundToMultiple(x, distanceToObstacle_, decimals),
+                roundToMultiple(y, distanceToObstacle_, decimals),
+                roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
+            );
+
+            obstaclesVertices.insert(index);
+
+            if(createdVertices.find(index) != createdVertices.end())
+            {
+                createdVertices.erase(index);
+            }
+            
+        }
+       
+        
+    }
+
+   
 
     void callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg) 
     {
@@ -1658,12 +1119,6 @@ private:
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        auto new_x_min = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        auto new_x_max = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        auto new_y_min = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        auto new_y_max = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        auto new_z_min = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        auto new_z_max = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
    
         
         
@@ -1684,49 +1139,6 @@ private:
 
             RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
         }
-
-        if (new_x_min != x_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            x_min_ = new_x_min;
-            RCLCPP_INFO(this->get_logger(), "Updated x_min: %.2f", x_min_);
-            trainAStar();
-        }
-        if (new_x_max != x_max_) 
-        {
-            std::cout << "\n" << std::endl;
-            x_max_ = new_x_max;
-            RCLCPP_INFO(this->get_logger(), "Updated x_max: %.2f", x_max_);
-            trainAStar();
-        }
-        if (new_y_min != y_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            y_min_ = new_y_min;
-            RCLCPP_INFO(this->get_logger(), "Updated y_min: %.2f", y_min_);
-            trainAStar();
-        }
-        if (new_y_max != y_max_) 
-        {
-            std::cout << "\n" << std::endl;
-           y_max_ = new_y_max;
-            RCLCPP_INFO(this->get_logger(), "Updated y_max: %.2f", y_max_);
-            trainAStar();
-        }        
-        if (new_z_min != z_min_) 
-        {
-            std::cout << "\n" << std::endl;
-            z_min_ = new_z_min;
-            RCLCPP_INFO(this->get_logger(), "Updated z_min: %.2f", z_min_);
-            trainAStar();
-        }
-        if (new_z_max != z_max_) 
-        {
-            std::cout << "\n" << std::endl;
-            z_max_ = new_z_max;
-            RCLCPP_INFO(this->get_logger(), "Updated z_max: %.2f", z_max_);
-            trainAStar();
-        }
        
         
 
@@ -1742,46 +1154,35 @@ public:
      
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
-        this->declare_parameter<double>("x_min", -1.0);
-        this->declare_parameter<double>("x_max", 1.0);
-        this->declare_parameter<double>("y_min", -1.0);
-        this->declare_parameter<double>("y_max", 1.0);
-        this->declare_parameter<double>("z_min", 0.0);
-        this->declare_parameter<double>("z_max", 0.4);
 
 
         // Initialize parameters 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        x_min_ = static_cast<float>(this->get_parameter("x_min").get_parameter_value().get<double>());
-        x_max_ = static_cast<float>(this->get_parameter("x_max").get_parameter_value().get<double>());
-        y_min_ = static_cast<float>(this->get_parameter("y_min").get_parameter_value().get<double>());
-        y_max_ = static_cast<float>(this->get_parameter("y_max").get_parameter_value().get<double>());
-        z_min_ = static_cast<float>(this->get_parameter("z_min").get_parameter_value().get<double>());
-        z_max_ = static_cast<float>(this->get_parameter("z_max").get_parameter_value().get<double>());
 
 
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
-        RCLCPP_INFO(this->get_logger(), "Updated x_min: %f", x_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated x_max: %f", x_max_);
-        RCLCPP_INFO(this->get_logger(), "Updated y_min: %f", y_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated y_max: %f", y_max_);
-        RCLCPP_INFO(this->get_logger(), "Updated z_min: %f", z_min_);
-        RCLCPP_INFO(this->get_logger(), "Updated z_max: %f", z_max_);
 
         parameterTimer = this->create_wall_timer(
-            std::chrono::seconds(5),
+            std::chrono::seconds(2),
             std::bind(&AStar::check_parameters, this));
 
-    
+        parameterTimer = this->create_wall_timer(
+            std::chrono::seconds(2),
+            std::bind(&AStar::check_parameters, this));
 
         decimals = countDecimals(distanceToObstacle_);
-        
        
  
-        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
+        subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+            "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+
+        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
         timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&AStar::publisher_dijkstra_path, this));
+
+        publisher_created_vertices = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_vertices", 10);
+
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);
         timer_path_ = this->create_wall_timer(1ms, std::bind(&AStar::publisher_dijkstra, this));
@@ -1790,13 +1191,11 @@ public:
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/rtabmap/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
 
-        
-        // const std::string filename = "/home/momesso/autonomous/src/map/config/obstacles.bin";
+        subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
+            "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
+
 
        
-
-        // loadVerticesFromFile(filename);
-        trainAStar();
     }
 };
 
