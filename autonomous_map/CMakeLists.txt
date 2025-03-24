@@ -24,7 +24,7 @@ find_package(yolo_msgs REQUIRED)
 find_library(XXHASH_LIBRARY xxhash REQUIRED)
 
 add_executable(create_graph src/create_graph.cpp)
-ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
+ament_target_dependencies(create_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
 
 add_executable(docking_node src/docking_node.cpp)
 ament_target_dependencies(docking_node rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs tf2_geometry_msgs)
@@ -35,6 +35,8 @@ ament_target_dependencies(a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversio
 add_executable(visualize_a_star src/visualize_a_star.cpp)
 ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
+add_executable(visualize_obstacles_graph src/visualize_obstacles_graph.cpp)
+ament_target_dependencies(visualize_obstacles_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
 
 add_executable(send_poses src/send_poses.cpp)
 ament_target_dependencies(send_poses rclcpp nav_msgs geometry_msgs yaml-cpp PCL pcl_conversions nav_msgs tf2_geometry_msgs sensor_msgs yolo_msgs)
@@ -77,6 +79,12 @@ target_link_libraries(visualize_a_star
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(visualize_obstacles_graph
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
 
 
 target_link_libraries(send_poses
@@ -118,6 +126,7 @@ install(TARGETS
   a_star
   controller
   visualize_a_star
+  visualize_obstacles_graph
   save_point_cloud
   DESTINATION lib/${PROJECT_NAME}
 )

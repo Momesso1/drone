@@ -28,22 +28,7 @@ def generate_launch_description():
 
         Node(
             package='autonomous_map',
-            executable='visualize_a_star',
-            output='screen',
-            parameters=parameters,
-        ),
-
-        
-        Node(
-            package='autonomous_map',
-            executable='send_poses',
-            parameters=parameters,
-            output='screen',
-        ),
-
-        Node(
-            package='autonomous_map',
-            executable='create_graph',
+            executable='visualize_obstacles_graph',
             output='screen',
             parameters=parameters,
         ),
