@@ -396,16 +396,7 @@ private:
         return result;
     }
     
-    inline float roundToMultipleFromBase(float value, float base, float multiple, int decimals) {
-        if (multiple == 0.0) return value; 
-        
-        float result = base + std::round((value - base) / multiple) * multiple;
-        float factor = std::pow(10.0, decimals);
-        result = std::round(result * factor) / factor;
-        
-        return result;
-    }
-    
+
 
     int countDecimals(float number) 
     {
@@ -604,11 +595,11 @@ private:
 
             float roundedPoseX = roundToMultiple(pose_x_, distanceToObstacle_, decimals);
             float roundedPoseY = roundToMultiple(pose_y_, distanceToObstacle_, decimals);
-            float roundedPoseZ = roundToMultipleFromBase(pose_z_, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+            float roundedPoseZ = roundToMultiple(pose_z_, distanceToObstacle_, decimals);
 
             float roundedDestinationX = roundToMultiple(static_cast<float>(destinationVertices[i_].x), distanceToObstacle_, decimals);
             float roundedDestinationY = roundToMultiple(static_cast<float>(destinationVertices[i_].y), distanceToObstacle_, decimals);
-            float roundedDestinationZ = roundToMultipleFromBase(static_cast<float>(destinationVertices[i_].z), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+            float roundedDestinationZ = roundToMultiple(static_cast<float>(destinationVertices[i_].z), distanceToObstacle_, decimals);
          
        
            

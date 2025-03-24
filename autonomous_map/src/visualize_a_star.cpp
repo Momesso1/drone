@@ -162,12 +162,8 @@ private:
 
     size_t i_ = 0; 
     int diagonalEdges_;
-    float resolution_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-    float z_min_;
- 
-
     int decimals = 0;
 
     std::tuple<float, float, float> globalGoalIndex;
@@ -194,16 +190,7 @@ private:
         return result;
     }
     
-    inline float roundToMultipleFromBase(float value, float base, float multiple, int decimals) {
-        if (multiple == 0.0) return value; 
-        
-        float result = base + std::round((value - base) / multiple) * multiple;
-        float factor = std::pow(10.0, decimals);
-        result = std::round(result * factor) / factor;
-        
-        return result;
-    }
-    
+   
 
     int countDecimals(float number) 
     {
@@ -305,9 +292,8 @@ private:
             {
                 new_x = roundToMultiple(std::get<0>(start_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(start_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z = roundToMultipleFromBase(std::get<2>(start_tuple) + (offsets1[a][2] * i), 
-                    roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
-                
+                new_z = roundToMultiple(std::get<2>(start_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
+   
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
@@ -335,8 +321,7 @@ private:
             {
                 new_x = roundToMultiple(std::get<0>(goal_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(goal_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z = roundToMultipleFromBase(std::get<2>(goal_tuple) + (offsets1[a][2] * i),
-                    roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                new_z = roundToMultiple(std::get<2>(goal_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
                 
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
@@ -400,14 +385,13 @@ private:
                 
             nodes[current].closed = true;
 
-            if(obstaclesVertices.find(current) == obstaclesVertices.end())
-            {
-                createdVertices.insert(current);
+            
+            createdVertices.insert(current);
 
-                publish_created_vertices();
-    
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            publish_created_vertices();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        
 
 
             
@@ -417,8 +401,8 @@ private:
                 {
                     new_x = roundToMultiple(std::get<0>(current) + offsets1[a][0], distanceToObstacle_, decimals);
                     new_y = roundToMultiple(std::get<1>(current) + offsets1[a][1], distanceToObstacle_, decimals);
-                    new_z = roundToMultipleFromBase(std::get<2>(current) + offsets1[a][2],
-                        roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                    new_z = roundToMultiple(std::get<2>(current) + offsets1[a][2], distanceToObstacle_, decimals);
+
                     
                     auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                         static_cast<float>(new_y), 
@@ -446,13 +430,13 @@ private:
                    
                         new_x2 = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
                         new_y2 = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z2 = roundToMultipleFromBase(std::get<2>(current), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
                         
                         auto index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(std::get<2>(current), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_z = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
                         
                         auto index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                         
@@ -1013,7 +997,8 @@ private:
 
     */
 
- 
+    bool obstaclesVerticesReceived = false;
+
     void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
     {
         verticesDestino_.clear();
@@ -1032,8 +1017,8 @@ private:
             verticesDestino_.push_back(destino);
         }
         
-         
-        if(!verticesDestino_.empty())
+        
+        if(!verticesDestino_.empty() && obstaclesVerticesReceived == true)
         {
         
             float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
@@ -1055,20 +1040,36 @@ private:
             {
                 i_ = 0;
             }
+
+            /*
+
+                coloquei createdVertices.clear() aqui para poder ver o caminho gerado 
+                por 3 segundos depois que o A* foi executado.
+
+            */
+
+            createdVertices.clear();
+
+            // Publicar createdVertices vazio (só para tirar nuvem de pontos do rviz)
+            publish_created_vertices();
+
+            RCLCPP_INFO(this->get_logger(), "A* will be executed in 3 seconds.");
+            std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
             
             auto start_time_ = std::chrono::high_resolution_clock::now();
+
             std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
            
-            createdVertices.clear();
             storeEdgesInPath(shortestPath);
-           
+          
+            adjacency_list.clear();
+            
+
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;  
 
-            adjacency_list.clear();
-
             RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
-       
         }
     }
 
@@ -1088,19 +1089,15 @@ private:
             auto index = std::make_tuple(
                 roundToMultiple(x, distanceToObstacle_, decimals),
                 roundToMultiple(y, distanceToObstacle_, decimals),
-                roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
+                roundToMultiple(z, distanceToObstacle_, decimals)
             );
 
             obstaclesVertices.insert(index);
 
-            if(createdVertices.find(index) != createdVertices.end())
-            {
-                createdVertices.erase(index);
-            }
-            
+         
         }
        
-        
+        obstaclesVerticesReceived = true; 
     }
 
    
@@ -1125,7 +1122,6 @@ private:
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
-            resolution_ = 1;
             std::cout << "\n" << std::endl;
             RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
             RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          
@@ -1168,10 +1164,7 @@ public:
             std::chrono::seconds(2),
             std::bind(&AStar::check_parameters, this));
 
-        parameterTimer = this->create_wall_timer(
-            std::chrono::seconds(2),
-            std::bind(&AStar::check_parameters, this));
-
+      
         decimals = countDecimals(distanceToObstacle_);
        
  

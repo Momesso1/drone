@@ -164,7 +164,6 @@ private:
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-    float z_min_;
    
 
     int decimals = 0;
@@ -188,16 +187,6 @@ private:
         if (multiple == 0.0) return value; // Evita divisão por zero
         
         float result = std::round(value / multiple) * multiple;
-        float factor = std::pow(10.0, decimals);
-        result = std::round(result * factor) / factor;
-        
-        return result;
-    }
-    
-    inline float roundToMultipleFromBase(float value, float base, float multiple, int decimals) {
-        if (multiple == 0.0) return value; 
-        
-        float result = base + std::round((value - base) / multiple) * multiple;
         float factor = std::pow(10.0, decimals);
         result = std::round(result * factor) / factor;
         
@@ -305,9 +294,8 @@ private:
             {
                 new_x = roundToMultiple(std::get<0>(start_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(start_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z = roundToMultipleFromBase(std::get<2>(start_tuple) + (offsets1[a][2] * i), 
-                    roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
-                
+                new_z = roundToMultiple(std::get<2>(start_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
+
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
@@ -335,9 +323,8 @@ private:
             {
                 new_x = roundToMultiple(std::get<0>(goal_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(goal_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
-                new_z = roundToMultipleFromBase(std::get<2>(goal_tuple) + (offsets1[a][2] * i),
-                    roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
-                
+                new_z = roundToMultiple(std::get<2>(goal_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
+
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
@@ -406,9 +393,8 @@ private:
                 {
                     new_x = roundToMultiple(std::get<0>(current) + offsets1[a][0], distanceToObstacle_, decimals);
                     new_y = roundToMultiple(std::get<1>(current) + offsets1[a][1], distanceToObstacle_, decimals);
-                    new_z = roundToMultipleFromBase(std::get<2>(current) + offsets1[a][2],
-                        roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
-                    
+                    new_z = roundToMultiple(std::get<2>(current) + offsets1[a][2], distanceToObstacle_, decimals);
+
                     auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
@@ -435,13 +421,13 @@ private:
                    
                         new_x2 = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
                         new_y2 = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z2 = roundToMultipleFromBase(std::get<2>(current), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_z2 = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
                         
                         auto index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
 
                         new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
                         new_y = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
-                        new_z = roundToMultipleFromBase(std::get<2>(current), roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals);
+                        new_z = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
                         
                         auto index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
                         
@@ -1036,7 +1022,7 @@ private:
             auto index = std::make_tuple(
                 roundToMultiple(x, distanceToObstacle_, decimals),
                 roundToMultiple(y, distanceToObstacle_, decimals),
-                roundToMultipleFromBase(z, roundToMultiple(z_min_, distanceToObstacle_, decimals), distanceToObstacle_, decimals)
+                roundToMultiple(z, distanceToObstacle_, decimals)
             );
 
             obstaclesVertices.insert(index);
@@ -1110,10 +1096,7 @@ public:
             std::chrono::seconds(2),
             std::bind(&AStar::check_parameters, this));
 
-        parameterTimer = this->create_wall_timer(
-            std::chrono::seconds(2),
-            std::bind(&AStar::check_parameters, this));
-
+    
         decimals = countDecimals(distanceToObstacle_);
        
  
