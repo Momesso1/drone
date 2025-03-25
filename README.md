@@ -17,7 +17,7 @@
 
 # **A*** **bidirecional**
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Um A* estrela foi iniciado da origem até o destino e outro A* foi iniciado do destino até a origem. Ambos funcionaram ao mesmo tempo com o uso de 2 threads. O caminho foi enocontrado no momento em que os 2 A* se tocaram. De 3 a 5 vezes mais rápido do que o A* unidirecional.
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Um A* estrela foi iniciado da origem até o destino e outro A* foi iniciado do destino até a origem. Ambos funcionaram ao mesmo tempo com o uso de 2 threads. O caminho foi encontrado no momento em que os 2 A* se tocaram. De 3 a 5 vezes mais rápido do que o A* unidirecional.
 
 [Screencast from 03-25-2025 03_04_56 AM.webm](https://github.com/user-attachments/assets/c577068a-e017-4318-8a42-67a93f7e51c2)
 
