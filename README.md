@@ -28,7 +28,7 @@
 [Screencast from 03-25-2025 03_05_44 AM.webm](https://github.com/user-attachments/assets/bb96e88b-aa22-4050-a2ac-290b50b1ecaa)
 
 
-# **Ambiente de simualação**
+# **Ambiente de simulação**
 
 ![Screenshot from 2025-03-16 11-31-21](https://github.com/user-attachments/assets/56cbb0eb-7c90-4b38-8780-7d2dd9955def)
 
