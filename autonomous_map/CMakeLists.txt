@@ -38,6 +38,9 @@ ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl
 add_executable(visualize_obstacles_graph src/visualize_obstacles_graph.cpp)
 ament_target_dependencies(visualize_obstacles_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
 
+add_executable(bidirecional_a_star src/bidirecional_a_star.cpp)
+ament_target_dependencies(bidirecional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
 add_executable(send_poses src/send_poses.cpp)
 ament_target_dependencies(send_poses rclcpp nav_msgs geometry_msgs yaml-cpp PCL pcl_conversions nav_msgs tf2_geometry_msgs sensor_msgs yolo_msgs)
 
@@ -71,6 +74,14 @@ target_link_libraries(a_star
   ${GLEW_LIBRARIES}
   ${PCL_LIBRARIES}
 )
+
+target_link_libraries(bidirecional_a_star
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
 
 target_link_libraries(visualize_a_star
   ${rclcpp_LIBRARIES}
@@ -124,6 +135,7 @@ install(TARGETS
   docking_node
   send_poses
   a_star
+  bidirecional_a_star
   controller
   visualize_a_star
   visualize_obstacles_graph

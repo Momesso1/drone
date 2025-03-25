@@ -16,7 +16,6 @@ def generate_launch_description():
         "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
-        "multi_thread": True,
     }]
 
   
@@ -28,7 +27,7 @@ def generate_launch_description():
 
         Node(
             package='autonomous_map',
-            executable='rrt',
+            executable='a_star',
             output='screen',
             parameters=parameters,
         ),

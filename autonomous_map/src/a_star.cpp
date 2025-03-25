@@ -306,6 +306,11 @@ private:
                     findNavigableVertice = true;
                 }
             }
+
+            if(findNavigableVertice == true)
+            {
+                break;
+            }
         }
         
         if(findNavigableVertice == false) 
@@ -334,6 +339,12 @@ private:
                     adjacency_list_tuples[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
                 }
+            }
+
+
+            if(findNavigableGoalVertice == true)
+            {
+                break;
             }
         }
         
@@ -995,7 +1006,7 @@ private:
             std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
            
             storeEdgesInPath(shortestPath);
-           
+          
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;  
 
