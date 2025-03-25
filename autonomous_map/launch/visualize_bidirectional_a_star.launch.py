@@ -19,7 +19,7 @@ def generate_launch_description():
         "activate_only_with_obstacles": False
     }]
 
-  
+    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'visualize_bidirectional_a_star.rviz')
     
       
     return LaunchDescription([
@@ -48,7 +48,13 @@ def generate_launch_description():
             parameters=parameters,
         ),
 
-       
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', rviz_config_file],
+        ),
 
 
     ])
