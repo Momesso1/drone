@@ -32,12 +32,6 @@ ament_target_dependencies(docking_node rclcpp std_msgs nav_msgs geometry_msgs PC
 add_executable(a_star src/a_star.cpp)
 ament_target_dependencies(a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
-add_executable(visualize_a_star src/visualize_a_star.cpp)
-ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
-
-add_executable(visualize_obstacles_graph src/visualize_obstacles_graph.cpp)
-ament_target_dependencies(visualize_obstacles_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
-
 add_executable(bidirectional_a_star src/bidirectional_a_star.cpp)
 ament_target_dependencies(bidirectional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
@@ -49,6 +43,17 @@ ament_target_dependencies(controller rclcpp nav_msgs geometry_msgs tf2_geometry_
 
 add_executable(save_point_cloud src/save_point_cloud.cpp)
 ament_target_dependencies(save_point_cloud rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions)
+
+add_executable(visualize_a_star src/visualize_a_star.cpp)
+ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
+add_executable(visualize_obstacles_graph src/visualize_obstacles_graph.cpp)
+ament_target_dependencies(visualize_obstacles_graph rclcpp std_msgs nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs)
+
+
+add_executable(visualize_bidirectional_a_star src/visualize_bidirectional_a_star.cpp)
+ament_target_dependencies(visualize_bidirectional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
 
 
 target_link_libraries(create_graph
@@ -84,6 +89,13 @@ target_link_libraries(bidirectional_a_star
 
 
 target_link_libraries(visualize_a_star
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+target_link_libraries(visualize_bidirectional_a_star
   ${rclcpp_LIBRARIES}
   ${std_msgs_LIBRARIES}
   ${GLEW_LIBRARIES}
@@ -138,6 +150,7 @@ install(TARGETS
   bidirectional_a_star
   controller
   visualize_a_star
+  visualize_bidirectional_a_star
   visualize_obstacles_graph
   save_point_cloud
   DESTINATION lib/${PROJECT_NAME}

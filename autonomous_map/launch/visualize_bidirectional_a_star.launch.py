@@ -16,6 +16,7 @@ def generate_launch_description():
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
         "time_between_points": 1, # In ms.
+        "activate_only_with_obstacles": False
     }]
 
   
@@ -27,7 +28,7 @@ def generate_launch_description():
 
         Node(
             package='autonomous_map',
-            executable='visualize_a_star',
+            executable='visualize_bidirectional_a_star',
             output='screen',
             parameters=parameters,
         ),

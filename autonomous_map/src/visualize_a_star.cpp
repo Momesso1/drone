@@ -161,6 +161,7 @@ private:
 
 
     size_t i_ = 0; 
+    bool activate_only_with_obstacles = false;
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
@@ -997,7 +998,7 @@ private:
 
     */
 
-    bool obstaclesVerticesReceived = false;
+    bool obstaclesVerticesReceived = !activate_only_with_obstacles;
 
     void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
     {
@@ -1048,6 +1049,7 @@ private:
 
             */
 
+            verticesDijkstra.clear();
             createdVertices.clear();
 
             // Publicar createdVertices vazio (só para tirar nuvem de pontos do rviz)
@@ -1056,7 +1058,8 @@ private:
             RCLCPP_INFO(this->get_logger(), "A* will be executed in 3 seconds.");
             std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
-            
+              //Publicar caminho vaio para sair do rviz.
+            publisher_dijkstra_path();
             auto start_time_ = std::chrono::high_resolution_clock::now();
 
             std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
@@ -1120,28 +1123,35 @@ private:
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         auto new_time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
-        
+        auto new_activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
         
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
-            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle to: %.2f", distanceToObstacle_);       
+            std::cout << "\n" << std::endl;
+            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %.2f", distanceToObstacle_);          
         }
 
         if(new_diagonalEdges != diagonalEdges_)
         {
             diagonalEdges_ = new_diagonalEdges;
-            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges to: %d", diagonalEdges_);
 
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
         }
-
+       
         if(new_time_between_points != time_between_points)
         {
             time_between_points = new_time_between_points;
-            RCLCPP_INFO(this->get_logger(), "Updated time_between_points to: %d ms", time_between_points);
+            RCLCPP_INFO(this->get_logger(), "time_between_points set to: %d ms", time_between_points);
         }
-       
-        
+
+        if(new_activate_only_with_obstacles != activate_only_with_obstacles)
+        {
+            activate_only_with_obstacles = new_activate_only_with_obstacles;
+            RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles set to: %s", activate_only_with_obstacles ? "true" : "false");
+        }
 
       
     }
@@ -1156,16 +1166,20 @@ public:
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
         this->declare_parameter<int>("time_between_points", 1);
+        this->declare_parameter<bool>("activate_only_with_obstacles", false);
 
-        // Initialize parameters 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
+        activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
 
-        RCLCPP_INFO(this->get_logger(), "distanceToObstacle: %f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "diagonalEdges: %d", diagonalEdges_);
-        RCLCPP_INFO(this->get_logger(), "time_between_points: %d ms", time_between_points);
 
+        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "time_between_points is set to: %d ms", time_between_points);
+        RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles is set to: %s", activate_only_with_obstacles ? "true" : "false");
+        
+        
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
             std::bind(&VisualizeAStar::check_parameters, this));

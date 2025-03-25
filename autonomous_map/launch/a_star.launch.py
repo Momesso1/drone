@@ -10,7 +10,6 @@ from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
     
-    # Definindo os parâmetros a serem usados nos nós
     parameters = [{
         "distanceToObstacle": 0.2,
         "diagonalEdges": 3,
