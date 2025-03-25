@@ -27,7 +27,7 @@ def generate_launch_description():
 
         Node(
             package='autonomous_map',
-            executable='rrt',
+            executable='bidirectional_a_star',
             output='screen',
             parameters=parameters,
         ),
