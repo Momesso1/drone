@@ -144,6 +144,7 @@ private:
  
     //Publishers.
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_created_vertices;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_navegable_vertices_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
 
@@ -803,9 +804,11 @@ private:
         return {};
     }
 
-    
+    std::unordered_set<std::tuple<float, float,float>> createdVertices;
+
     void storeEdgesInPath(std::vector<std::tuple<float, float, float>>& path) 
     {
+        std::vector<std::tuple<float, float, float>> filteredPath;
         verticesDijkstra.clear();
         if (path.empty()) {
             return;
@@ -814,73 +817,88 @@ private:
         auto start_time_ = std::chrono::high_resolution_clock::now();
         int k = 0;
 
-        
-        for(int i = path.size() - 1; i >= 0; i--)
+        while (k < static_cast<int>(path.size()) - 1) 
         {
-            
-            std::tuple<float, float, float> A {pose_x_, pose_y_, pose_z_};
-            std::tuple<float, float, float> B {std::get<0>(path[i]), std::get<1>(path[i]), std::get<2>(path[i])};
-
-            float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
-            float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
-
-            float dx = bx - ax, dy = by - ay, dz = bz - az;
-            float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-
-        
-      
-            float ux = dx / distance;
-            float uy = dy / distance;
-            float uz = dz / distance;
-
-            float step = distanceToObstacle_;
-            float t = 0.0f;
-            bool found = false;
-            auto offsets1 = getOffsets(distanceToObstacle_);
-            
-            double new_x = 0.0, new_y = 0.0, new_z = 0.0;
-
-            while (t < distance) 
+            bool shortcutFound = false;
+            for (int i = static_cast<int>(path.size()) - 1; i > k; i--) 
             {
-                
-                std::tuple<float, float, float> point;
-                std::get<0>(point) = ax + t * ux;
-                std::get<1>(point) = ay + t * uy;
-                std::get<2>(point) = az + t * uz;
-
-                for (int a = 0; a < 26; a++) 
+                std::tuple<float, float, float> A {
+                    std::get<0>(path[k]),
+                    std::get<1>(path[k]),
+                    std::get<2>(path[k])
+                };
+                std::tuple<float, float, float> B {
+                    std::get<0>(path[i]),
+                    std::get<1>(path[i]),
+                    std::get<2>(path[i])
+                };
+        
+                float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
+                float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
+        
+                float dx = bx - ax, dy = by - ay, dz = bz - az;
+                float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        
+                // Evita divisão por zero (caso A e B sejam iguais)
+                if (distance == 0) {
+                    continue;
+                }
+        
+                float ux = dx / distance;
+                float uy = dy / distance;
+                float uz = dz / distance;
+        
+                float step = distanceToObstacle_;
+                float t = 0.0f;
+                bool obstacleFound = false;
+                auto offsets1 = getOffsets(distanceToObstacle_);
+                createdVertices.clear();
+        
+                while (t < distance && obstacleFound == false) 
                 {
-                    new_x = roundToMultiple(std::get<0>(point) + offsets1[a][0], distanceToObstacle_, decimals);
-                    new_y = roundToMultiple(std::get<1>(point) + offsets1[a][1], distanceToObstacle_, decimals);
-                    new_z = roundToMultiple(std::get<2>(point) + offsets1[a][2], distanceToObstacle_, decimals);
-
-                    auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
+                    std::tuple<float, float, float> point;
+                    std::get<0>(point) = ax + t * ux;
+                    std::get<1>(point) = ay + t * uy;
+                    std::get<2>(point) = az + t * uz;
+        
+                    double new_x = roundToMultiple(std::get<0>(point), distanceToObstacle_, decimals);
+                    double new_y = roundToMultiple(std::get<1>(point), distanceToObstacle_, decimals);
+                    double new_z = roundToMultiple(std::get<2>(point), distanceToObstacle_, decimals);
+        
+                    auto neighbor_tuple = std::make_tuple(
+                        static_cast<float>(new_x), 
                         static_cast<float>(new_y), 
-                        static_cast<float>(new_z));
+                        static_cast<float>(new_z)
+                    );
                     
-                    if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end())
+                    if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end()) 
                     {
-                        
-                        found = true;
+                        obstacleFound = true;
                         break;
                     }
-                }
 
-                if(found == true)
+                    t += step;
+                }
+        
+                if (obstacleFound == false) 
                 {
-                    break;
+                    path.erase(path.begin() + k + 1, path.begin() + i);
+
+                    shortcutFound = true;
+
+                    break;  
                 }
-
-                t += step;
             }
-
-            if(found == false)
+        
+            if (shortcutFound == true)
             {
-                path.erase(path.begin() + 1, path.begin() + i);
+                k++;
+            } 
+            else if(shortcutFound == false)
+            {
                 break;
             }
 
-      
         }
 
         
@@ -888,11 +906,6 @@ private:
         std::chrono::duration<float> duration = end_time - start_time_; 
 
         RCLCPP_INFO(this->get_logger(), "A* filter execution time: %.10f", duration.count());
-
-        for(const auto& it : path)
-        {
-            std::cout << it << std::endl;
-        }
 
         
         for (size_t i = 0; i < path.size(); i++) 
@@ -956,6 +969,47 @@ private:
 
     */
 
+
+    void publish_created_vertices()
+    {
+        sensor_msgs::msg::PointCloud2 cloud_msg_created_vertices;
+        cloud_msg_created_vertices.header.stamp = this->get_clock()->now();
+        cloud_msg_created_vertices.header.frame_id = "map";
+
+        // Configuração dos campos do PointCloud2
+        cloud_msg_created_vertices.height = 1;  // Ponto único em cada linha
+        cloud_msg_created_vertices.width = createdVertices.size(); // Quantidade de vértices
+        cloud_msg_created_vertices.is_dense = true;
+        cloud_msg_created_vertices.is_bigendian = false;
+        cloud_msg_created_vertices.point_step = 3 * sizeof(float); // x, y, z
+        cloud_msg_created_vertices.row_step = cloud_msg_created_vertices.point_step * cloud_msg_created_vertices.width;
+
+        // Adicionar campos de x, y, z
+        sensor_msgs::PointCloud2Modifier modifier(cloud_msg_created_vertices);
+        modifier.setPointCloud2FieldsByString(1, "xyz");
+        modifier.resize(cloud_msg_created_vertices.width);
+
+        // Preencher os dados do PointCloud2
+        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg_created_vertices, "x");
+        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg_created_vertices, "y");
+        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg_created_vertices, "z");
+        for (const auto& vertex : createdVertices) 
+        {
+           
+                *iter_x = std::get<0>(vertex);
+                *iter_y = std::get<1>(vertex);
+                *iter_z = std::get<2>(vertex);
+
+                ++iter_x;
+                ++iter_y;
+                ++iter_z;
+   
+            
+        }
+
+
+         publisher_created_vertices->publish(cloud_msg_created_vertices);
+    }
     
     void publisher_dijkstra()
     {   
@@ -1171,7 +1225,8 @@ public:
 
     
         decimals = countDecimals(distanceToObstacle_);
-       
+        publisher_created_vertices = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_vertices", 10);
+
  
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
