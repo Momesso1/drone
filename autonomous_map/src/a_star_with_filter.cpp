@@ -803,41 +803,98 @@ private:
         return {};
     }
 
-    std::vector<int> reconstructPath(const std::unordered_map<int, int> &came_from, int current) 
-    {
-        std::vector<int> path;
-        while (came_from.find(current) != came_from.end()) 
-        {
-            path.push_back(current);
-            current = came_from.at(current);
-        }
-
-        path.push_back(current);
-
-        std::reverse(path.begin(), path.end());
-            
-        
-        return path;
-    }
-
-    void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
-    {
-        shortestPathEdges.clear();
-        verticesDijkstra.clear();
     
+    void storeEdgesInPath(std::vector<std::tuple<float, float, float>>& path) 
+    {
+        verticesDijkstra.clear();
         if (path.empty()) {
             return;
         }
     
-        // Processar as arestas do caminho
-        for (size_t i = 0; i < path.size() - 1; i++) 
+        auto start_time_ = std::chrono::high_resolution_clock::now();
+        int k = 0;
+
+        
+        for(int i = path.size() - 1; i >= 0; i--)
         {
-            int u = i;  // Usando o índice para representar os vértices
-            int v = i + 1;
-            shortestPathEdges.push_back({u, v});
+            
+            std::tuple<float, float, float> A {pose_x_, pose_y_, pose_z_};
+            std::tuple<float, float, float> B {std::get<0>(path[i]), std::get<1>(path[i]), std::get<2>(path[i])};
+
+            float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
+            float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
+
+            float dx = bx - ax, dy = by - ay, dz = bz - az;
+            float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+        
+      
+            float ux = dx / distance;
+            float uy = dy / distance;
+            float uz = dz / distance;
+
+            float step = distanceToObstacle_;
+            float t = 0.0f;
+            bool found = false;
+            auto offsets1 = getOffsets(distanceToObstacle_);
+            
+            double new_x = 0.0, new_y = 0.0, new_z = 0.0;
+
+            while (t < distance) 
+            {
+                
+                std::tuple<float, float, float> point;
+                std::get<0>(point) = ax + t * ux;
+                std::get<1>(point) = ay + t * uy;
+                std::get<2>(point) = az + t * uz;
+
+                for (int a = 0; a < 26; a++) 
+                {
+                    new_x = roundToMultiple(std::get<0>(point) + offsets1[a][0], distanceToObstacle_, decimals);
+                    new_y = roundToMultiple(std::get<1>(point) + offsets1[a][1], distanceToObstacle_, decimals);
+                    new_z = roundToMultiple(std::get<2>(point) + offsets1[a][2], distanceToObstacle_, decimals);
+
+                    auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
+                        static_cast<float>(new_y), 
+                        static_cast<float>(new_z));
+                    
+                    if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end())
+                    {
+                        
+                        found = true;
+                        break;
+                    }
+                }
+
+                if(found == true)
+                {
+                    break;
+                }
+
+                t += step;
+            }
+
+            if(found == false)
+            {
+                path.erase(path.begin() + 1, path.begin() + i);
+                break;
+            }
+
+      
         }
-    
-        // Processar os vértices do caminho
+
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> duration = end_time - start_time_; 
+
+        RCLCPP_INFO(this->get_logger(), "A* filter execution time: %.10f", duration.count());
+
+        for(const auto& it : path)
+        {
+            std::cout << it << std::endl;
+        }
+
+        
         for (size_t i = 0; i < path.size(); i++) 
         {
             VertexDijkstra vertex;
@@ -1003,6 +1060,8 @@ private:
             }
             
             auto start_time_ = std::chrono::high_resolution_clock::now();
+            
+
             std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
            
             storeEdgesInPath(shortestPath);

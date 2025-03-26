@@ -37,6 +37,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include "std_msgs/msg/float32.hpp"
 
 using namespace std::chrono_literals;
 
@@ -93,7 +94,7 @@ std::ostream& operator<<(std::ostream& os, const std::tuple<T1, T2, T3>& t) {
 }
 
 
-class BidirectionalAStar : public rclcpp::Node {
+class PlotBidirectionalAStar : public rclcpp::Node {
 
 private:
 
@@ -153,6 +154,9 @@ private:
 
  
     //Publishers.
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr twist_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pose_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr float_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_navegable_vertices_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
@@ -161,6 +165,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_navigable_removed_vertices;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_odom_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr subscription3_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr subscription_;
 
     //Timers.
     rclcpp::TimerBase::SharedPtr timer_navegable_vertices_;
@@ -173,7 +178,7 @@ private:
     size_t i_ = 0; 
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
+    float distanceToObstacle_, time = 0;
    
     int decimals = 0;
 
@@ -1482,8 +1487,7 @@ private:
     
   
 
-    int l = 0;
-    float tempo_medio = 0.0, soma_total = 0.0;
+
     void runBidirectionalSearch(float start[3], float end[3]) 
     {
         
@@ -1505,14 +1509,24 @@ private:
 
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;
-            l++;
-            soma_total = soma_total + duration.count();
-            tempo_medio = (soma_total / l);
-            
-            RCLCPP_INFO(this->get_logger(), "Bidirectional A* execution time: %.10f", duration.count());
-            RCLCPP_INFO(this->get_logger(), "Medium bidirection A* execution time: %.10f", tempo_medio);
-            end_barrier.arrive_and_wait();
+           
 
+            RCLCPP_INFO(this->get_logger(), "Bidirectional A* execution time: %.10f", duration.count());
+
+            end_barrier.arrive_and_wait();
+            float distance = 0.0;
+
+            for(int i = 0; i < shortestPath.size() - 1; i++)
+            {
+                distance = distance + std::sqrt(std::pow(std::get<0>(shortestPath[i + 1]) - std::get<0>(shortestPath[i]), 2) + std::pow(std::get<1>(shortestPath[i + 1]) - std::get<1>(shortestPath[i]), 2) + std::pow(std::get<2>(shortestPath[i + 1]) - std::get<2>(shortestPath[i]), 2));
+            }
+
+            std::cout << shortestPath.size() << std::endl;
+            RCLCPP_INFO(this->get_logger(), "Distance: %.10f", distance);
+
+
+            time = duration.count();
+            timer_callback();
             {
                 std::lock_guard<std::mutex> lock(path_data_mutex);
                 shared_explored.clear();
@@ -1719,12 +1733,57 @@ private:
       
     }
 
+    
+    float linearX = 0.0, linearY = 0.0, linearZ = 0.0, angularX = 0.0, angularY = 0.0, angularZ = 0.0;
 
+    void timer_callback()
+    {
+        auto float_msg = std_msgs::msg::Float32();
+        float_msg.data = time;  
+        float_pub_->publish(float_msg);
+
+        auto twist_msg = geometry_msgs::msg::Twist();
+        twist_msg.linear.x = linearX;
+        twist_msg.linear.y = linearY;
+        twist_msg.linear.z = linearZ;
+        twist_msg.angular.x = angularX;
+        twist_msg.angular.y = angularY;
+        twist_msg.angular.z = angularZ;
+        twist_pub_->publish(twist_msg);
+
+        // Publica mensagem do tipo Pose
+        auto pose_msg = geometry_msgs::msg::Pose();
+        pose_msg.position.x = pose_x_;
+        pose_msg.position.y = pose_y_;
+        pose_msg.position.z = pose_z_;
+        pose_msg.orientation.x = 0.0;
+        pose_msg.orientation.y = 0.0;
+        pose_msg.orientation.z = 0.0;
+        pose_msg.orientation.w = 1.0;
+        pose_pub_->publish(pose_msg);
+    
+    }
+
+    void topic_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
+    {
+        // Exibe os valores da velocidade linear e angular
+        
+        // Atualiza as variáveis membro
+        linearX = msg->linear.x;
+        linearY = msg->linear.y;
+        linearZ = msg->linear.z;
+
+        angularX = msg->angular.x;
+        angularY = msg->angular.y;
+        angularZ = msg->angular.z;
+    }
+    
+    
     
     
    
 public:
-    BidirectionalAStar() 
+    PlotBidirectionalAStar() 
     : rclcpp::Node("bidirectional_a_star")
     {
     
@@ -1743,28 +1802,40 @@ public:
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
-            std::bind(&BidirectionalAStar::check_parameters, this));
+            std::bind(&PlotBidirectionalAStar::check_parameters, this));
       
-   
+
+        float_pub_ = this->create_publisher<std_msgs::msg::Float32>("/time", 10);
+
+        twist_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/velocity", 10);
+        
+        pose_pub_ = this->create_publisher<geometry_msgs::msg::Pose>("/pose", 10);
+
+        subscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
+            "/simple_drone/cmd_vel", 10,
+            std::bind(&PlotBidirectionalAStar::topic_callback, this, std::placeholders::_1));
       
+
+
         decimals = countDecimals(distanceToObstacle_);
        
  
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/obstacles_vertices", 10, std::bind(&BidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+            "/obstacles_vertices", 10, std::bind(&PlotBidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
         publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
-        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&BidirectionalAStar::publisher_dijkstra_path, this));
+        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&PlotBidirectionalAStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);
-        timer_path_ = this->create_wall_timer(1ms, std::bind(&BidirectionalAStar::publisher_dijkstra, this));
+        timer_path_ = this->create_wall_timer(1ms, std::bind(&PlotBidirectionalAStar::publisher_dijkstra, this));
         
 
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/rtabmap/odom", 10, std::bind(&BidirectionalAStar::callback_odom, this, std::placeholders::_1));
+            "/rtabmap/odom", 10, std::bind(&PlotBidirectionalAStar::callback_odom, this, std::placeholders::_1));
 
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-            "/destinations", 10, std::bind(&BidirectionalAStar::callback_destinations, this, std::placeholders::_1));
+            "/destinations", 10, std::bind(&PlotBidirectionalAStar::callback_destinations, this, std::placeholders::_1));
+        
 
 
             
@@ -1779,7 +1850,7 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     
-    rclcpp::spin(std::make_shared<BidirectionalAStar>());
+    rclcpp::spin(std::make_shared<PlotBidirectionalAStar>());
     rclcpp::shutdown();
     return 0;
 }

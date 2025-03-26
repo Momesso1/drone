@@ -16,7 +16,7 @@ def generate_launch_description():
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
         "time_between_points": 1, # In ms.
-        "activate_only_with_obstacles": False
+        "activate_only_with_obstacles": True
     }]
 
     rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'visualize_bidirectional_a_star.rviz')

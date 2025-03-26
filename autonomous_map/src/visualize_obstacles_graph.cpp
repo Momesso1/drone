@@ -217,26 +217,20 @@ private:
 
                             createdVertices.insert(index10);
 
-                            publish_created_vertices();
                             
-                            std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
 
                             verticesArbitrary[index11] = {(it->second.x + toma), (it->second.y + toma) - (distanceToObstacle_ * eita), it->second.z};
 
 
                             createdVertices.insert(index11);
 
-                            publish_created_vertices();
                             
-                            std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
 
                             verticesArbitrary[index12] = {(it->second.x - toma), (it->second.y - toma) + (distanceToObstacle_ * eita), it->second.z};
 
                             createdVertices.insert(index12);
 
-                            publish_created_vertices();
-                            
-                            std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
+                           
 
                             verticesArbitrary[index13] = {(it->second.x - toma) + (distanceToObstacle_ * eita), (it->second.y - toma), it->second.z};
                         

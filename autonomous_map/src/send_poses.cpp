@@ -40,7 +40,7 @@ private:
     std::vector<geometry_msgs::msg::Pose> destinations_;
     std::vector<geometry_msgs::msg::Pose> dockingDestinations_;
 
-    bool docking_, person_detected = false;
+    bool docking_;
 
     // Função para carregar as localizações do arquivo YAML
     void load_locations_from_yaml(const std::string &file_path)
