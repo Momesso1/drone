@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'plot_velocity_time_and_position = plot_package.plot_velocity_time_and_position:main',
+            'plot_all_algorithms = plot_package.plot_all_algorithms:main',
         ],
     },
 )

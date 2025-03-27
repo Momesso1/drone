@@ -19,7 +19,7 @@ def generate_launch_description():
     }]
 
   
-    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'bidirectional_a_star_with_filter.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'visualize_bidirectional_a_star.rviz')
 
       
     return LaunchDescription([

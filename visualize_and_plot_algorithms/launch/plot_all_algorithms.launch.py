@@ -54,6 +54,13 @@ def generate_launch_description():
             parameters=parameters,
         ),
 
+        Node(
+            package='plot_package',
+            executable='plot_all_algorithms',
+            parameters=parameters,
+            output='screen',
+        ),
+
         
         Node(
             package='algorithms',

@@ -907,6 +907,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "A* filter execution time: %.10f", duration.count());
 
             
+        heuristic_distance = 0.0;
         for (size_t i = 0; i < path.size(); i++) 
         {
             VertexDijkstra vertex;
