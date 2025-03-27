@@ -1,0 +1,59 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch_ros.actions import Node
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, SetEnvironmentVariable
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, Command
+from launch.conditions import IfCondition, UnlessCondition
+
+def generate_launch_description():
+    
+    parameters = [{
+        "distanceToObstacle": 0.2,
+        "diagonalEdges": 3,
+        "maxSecurityDistance": 0.20,
+        "maxSecurityHeightDistance": 0.20,
+    }]
+
+  
+    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'default.rviz')
+
+      
+    return LaunchDescription([
+
+        
+
+        Node(
+            package='autonomous_map',
+            executable='bidirectional_a_star_with_filter',
+            output='screen',
+            parameters=parameters,
+        ),
+
+        
+        Node(
+            package='autonomous_map',
+            executable='send_poses',
+            parameters=parameters,
+            output='screen',
+        ),
+
+        Node(
+            package='autonomous_map',
+            executable='create_graph',
+            output='screen',
+            parameters=parameters,
+        ),
+
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', rviz_config_file],
+        ),
+
+
+    ])

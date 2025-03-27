@@ -49,7 +49,8 @@ ament_target_dependencies(a_star_with_filter rclcpp nav_msgs geometry_msgs PCL p
 add_executable(bidirectional_a_star src/bidirectional_a_star.cpp)
 ament_target_dependencies(bidirectional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
-
+add_executable(bidirectional_a_star_with_filter src/bidirectional_a_star_with_filter.cpp)
+ament_target_dependencies(bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 add_executable(visualize_a_star src/visualize_a_star.cpp)
 ament_target_dependencies(visualize_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
@@ -133,6 +134,13 @@ target_link_libraries(bidirectional_a_star
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(bidirectional_a_star_with_filter
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
 
 target_link_libraries(visualize_a_star
   ${rclcpp_LIBRARIES}
@@ -189,6 +197,7 @@ install(TARGETS
   a_star
   a_star_with_filter
   bidirectional_a_star
+  bidirectional_a_star_with_filter
   controller
   visualize_a_star
   visualize_bidirectional_a_star
