@@ -10,16 +10,18 @@ from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
     
+    
     parameters = [{
-        "distanceToObstacle": 0.2,
-        "diagonalEdges": 10,
-        "maxSecurityDistance": 0.20,
-        "maxSecurityHeightDistance": 0.20,
+        "distanceToObstacle": 0.3,
+        "diagonalEdges": 3,
+        "maxSecurityDistance": 0.30,
+        "maxSecurityHeightDistance": 0.30,
         "time_between_points": 1, # In ms.
-        "activate_only_with_obstacles": True
+        "activate_only_with_obstacles": False
     }]
 
-    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'visualize_bidirectional_a_star.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'visualize_obstacles_graph.rviz')
+
     
       
     return LaunchDescription([
@@ -27,23 +29,8 @@ def generate_launch_description():
         
 
         Node(
-            package='autonomous_map',
-            executable='visualize_bidirectional_a_star',
-            output='screen',
-            parameters=parameters,
-        ),
-
-        
-        Node(
-            package='autonomous_map',
-            executable='send_poses',
-            parameters=parameters,
-            output='screen',
-        ),
-
-        Node(
-            package='autonomous_map',
-            executable='create_graph',
+            package='visualize_and_plot_algorithms',
+            executable='visualize_obstacles_graph',
             output='screen',
             parameters=parameters,
         ),

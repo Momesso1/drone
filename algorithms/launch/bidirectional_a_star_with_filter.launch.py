@@ -12,15 +12,13 @@ def generate_launch_description():
     
     parameters = [{
         "distanceToObstacle": 0.2,
-        "diagonalEdges": 10,
+        "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
-        "time_between_points": 1, # In ms.
-        "activate_only_with_obstacles": True
     }]
 
   
-    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'visualize_a_star.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('algorithms'), 'rviz', 'default.rviz')
 
       
     return LaunchDescription([
@@ -28,28 +26,28 @@ def generate_launch_description():
         
 
         Node(
-            package='autonomous_map',
-            executable='visualize_a_star',
+            package='algorithms',
+            executable='bidirectional_a_star_with_filter',
             output='screen',
             parameters=parameters,
         ),
 
         
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='send_poses',
             parameters=parameters,
             output='screen',
         ),
 
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='create_graph',
             output='screen',
             parameters=parameters,
         ),
 
-       Node(
+        Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',

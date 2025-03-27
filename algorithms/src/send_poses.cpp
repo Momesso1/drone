@@ -268,7 +268,7 @@ public:
     detection_sub_ = this->create_subscription<yolo_msgs::msg::DetectionArray>(
       "/yolo/detections_3d", 10, std::bind(&SendPoses::objects_positions, this, std::placeholders::_1));
 
-    const std::string yaml_file_path = "/home/momesso/autonomous/src/autonomous_map/config/locations.yaml";
+    const std::string yaml_file_path = "/home/momesso/autonomous/src/algorithms/config/locations.yaml";
     load_locations_from_yaml(yaml_file_path);
   }
 };

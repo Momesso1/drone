@@ -17,31 +17,31 @@ def generate_launch_description():
         "maxSecurityHeightDistance": 0.20,
     }]
 
-    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'default.rviz')
+  
+    rviz_config_file = os.path.join(get_package_share_directory('algorithms'), 'rviz', 'default.rviz')
 
-    
       
     return LaunchDescription([
 
         
 
         Node(
-            package='autonomous_map',
-            executable='bidirectional_a_star',
+            package='algorithms',
+            executable='a_star_with_filter',
             output='screen',
             parameters=parameters,
         ),
 
         
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='send_poses',
             parameters=parameters,
             output='screen',
         ),
 
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='create_graph',
             output='screen',
             parameters=parameters,

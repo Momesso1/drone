@@ -18,7 +18,7 @@ def generate_launch_description():
     }]
 
   
-    rviz_config_file = os.path.join(get_package_share_directory('autonomous_map'), 'rviz', 'default.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('algorithms'), 'rviz', 'default.rviz')
 
       
     return LaunchDescription([
@@ -26,22 +26,22 @@ def generate_launch_description():
         
 
         Node(
-            package='autonomous_map',
-            executable='a_star',
+            package='algorithms',
+            executable='bidirectional_a_star',
             output='screen',
             parameters=parameters,
         ),
 
         
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='send_poses',
             parameters=parameters,
             output='screen',
         ),
 
         Node(
-            package='autonomous_map',
+            package='algorithms',
             executable='create_graph',
             output='screen',
             parameters=parameters,
