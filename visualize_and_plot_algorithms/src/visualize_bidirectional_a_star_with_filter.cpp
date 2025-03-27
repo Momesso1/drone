@@ -33,7 +33,10 @@
 #include <iomanip>
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include <filesystem>
-
+#include <barrier>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 using namespace std::chrono_literals;
 
@@ -90,7 +93,7 @@ std::ostream& operator<<(std::ostream& os, const std::tuple<T1, T2, T3>& t) {
 }
 
 
-class AStar : public rclcpp::Node {
+class BidirectionalAStar : public rclcpp::Node {
 
 private:
 
@@ -141,6 +144,13 @@ private:
         }
     };
 
+    struct Node {
+        std::tuple<float, float, float> parent;
+        float g_score = std::numeric_limits<float>::infinity();
+        float f_score = std::numeric_limits<float>::infinity();
+        bool closed = false;
+    };
+
  
     //Publishers.
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
@@ -149,47 +159,57 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_shortcut_nav_path_;
 
-
     //Subscriptions.
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_navigable_removed_vertices;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_odom_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr subscription3_;
 
     //Timers.
-    rclcpp::TimerBase::SharedPtr timer_navegable_vertices_;
-    rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr timer_path_;
     rclcpp::TimerBase::SharedPtr timer_visualize_path_;
     rclcpp::TimerBase::SharedPtr parameterTimer;
 
-
     size_t i_ = 0; 
-    int diagonalEdges_;
-    float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
-   
+    int diagonalEdges_ = 0, decimals = 0;
+    float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0, distanceToObstacle_ = 0.0;
 
-    int decimals = 0;
+    std::mutex path_data_mutex; 
+    std::mutex nodes_from_destination; 
+    std::mutex nodes_from_origin; 
+
+    bool found = false;
+
+    std::atomic<bool> running{true};
 
     std::tuple<float, float, float> globalGoalIndex;
-    std::tuple<float, float, float> globalIndex;
 
-    std::vector<std::tuple<float, float, float>> destinationEdges;
     std::vector<VertexDijkstra> verticesDestino_;
     std::vector<VertexDijkstra> verticesDijkstra;
     std::vector<VertexDijkstra> shortcutVertices;
-    std::vector<Edge> shortestPathEdges;
     
     std::unordered_set<std::tuple<float, float,float>> createdNotRoundedVertices;
     std::unordered_set<std::tuple<float, float,float>> createdVertices;
-    std::unordered_map<int, std::vector<int>> adjacency_list;
+    std::unordered_map<std::tuple<float, float, float>, Node> nodesFromOrigin;
+    std::unordered_map<std::tuple<float, float, float>, Node> nodesFromDestination;
+    std::unordered_set<std::tuple<float, float, float>> shared_explored;
+    std::unordered_map<std::tuple<float, float, float>, std::vector<std::tuple<float, float, float>>> adjacencyListTuplesFromOrigin;
+    std::unordered_map<std::tuple<float, float, float>, std::vector<std::tuple<float, float, float>>> adjacencyListTuplesFromDestination;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
-    std::unordered_map<int, Vertex> navigableVerticesMapInteger;
 
     inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
         
         float result = std::round(value / multiple) * multiple;
+        float factor = std::pow(10.0, decimals);
+        result = std::round(result * factor) / factor;
+        
+        return result;
+    }
+    
+    inline float roundToMultipleFromBase(float value, float base, float multiple, int decimals) {
+        if (multiple == 0.0) return value; 
+        
+        float result = base + std::round((value - base) / multiple) * multiple;
         float factor = std::pow(10.0, decimals);
         result = std::round(result * factor) / factor;
         
@@ -265,22 +285,12 @@ private:
         };
     }
     
-    std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
+    std::vector<std::tuple<float, float, float>> runAStarFromOrigin(float start[3], float goal[3]) 
     {
-        destinationEdges.clear();
+
+
         
-        
-        struct Node {
-            std::tuple<float, float, float> parent;
-            float g_score = std::numeric_limits<float>::infinity();
-            float f_score = std::numeric_limits<float>::infinity();
-            bool closed = false;
-        };
-        
-        
-        std::unordered_map<std::tuple<float, float, float>, Node> nodes;
-        
-        std::unordered_map<std::tuple<float, float, float>, std::vector<std::tuple<float, float, float>>> adjacency_list_tuples;
+
         
         auto offsets1 = getOffsets(distanceToObstacle_);
         
@@ -290,7 +300,7 @@ private:
         float new_x = 0.0, new_y = 0.0, new_z = 0.0;
         bool findNavigableVertice = false;
         
-        // Find navigable vertices near start
+      
         for(int i = 1; i <= 2; i++)
         {
             for (int a = 0; a < 26; a++) 
@@ -298,14 +308,14 @@ private:
                 new_x = roundToMultiple(std::get<0>(start_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(start_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
                 new_z = roundToMultiple(std::get<2>(start_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
-
+                
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
                 if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                 { 
-                    adjacency_list_tuples[start_tuple].push_back(neighbor_tuple);
+                    adjacencyListTuplesFromOrigin[start_tuple].push_back(neighbor_tuple);
                     findNavigableVertice = true;
                 }
             }
@@ -322,7 +332,7 @@ private:
             return {};
         }
         
-        // Find navigable vertices near goal
+       
         bool findNavigableGoalVertice = false;
         
         for(int i = 1; i <= 2; i++)
@@ -332,18 +342,17 @@ private:
                 new_x = roundToMultiple(std::get<0>(goal_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
                 new_y = roundToMultiple(std::get<1>(goal_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
                 new_z = roundToMultiple(std::get<2>(goal_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
-
+                
                 auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
                 if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                 { 
-                    adjacency_list_tuples[neighbor_tuple].push_back(goal_tuple);
+                    adjacencyListTuplesFromOrigin[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
                 }
             }
-
 
             if(findNavigableGoalVertice == true)
             {
@@ -369,8 +378,8 @@ private:
             return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2) + std::pow(z2 - z1, 2));
         };
         
-        nodes[start_tuple].g_score = 0;
-        nodes[start_tuple].f_score = heuristic(start_tuple, goal_tuple);
+        nodesFromOrigin[start_tuple].g_score = 0;
+        nodesFromOrigin[start_tuple].f_score = heuristic(start_tuple, goal_tuple);
         
         struct TupleCompare {
             bool operator()(const std::pair<float, std::tuple<float, float, float>>& a, 
@@ -385,22 +394,27 @@ private:
             TupleCompare
         > open_set;
         
-        open_set.push({nodes[start_tuple].f_score, start_tuple});
+        open_set.push({nodesFromOrigin[start_tuple].f_score, start_tuple});
         
         while (!open_set.empty()) 
         {
+
             auto current_pair = open_set.top();
             open_set.pop();
             auto current = current_pair.second;
             
-            if (nodes[current].closed)
+
+
+
+            if (nodesFromOrigin[current].closed)
+            continue;
+                
+            if (current_pair.first > nodesFromOrigin[current].f_score)
                 continue;
                 
-            if (current_pair.first > nodes[current].f_score)
-                continue;
-                
-            nodes[current].closed = true;
-            
+            nodesFromOrigin[current].closed = true;
+
+           
             if (current != start_tuple && current != goal_tuple)
             {
                 for (int a = 0; a < 26; a++) 
@@ -408,24 +422,23 @@ private:
                     new_x = roundToMultiple(std::get<0>(current) + offsets1[a][0], distanceToObstacle_, decimals);
                     new_y = roundToMultiple(std::get<1>(current) + offsets1[a][1], distanceToObstacle_, decimals);
                     new_z = roundToMultiple(std::get<2>(current) + offsets1[a][2], distanceToObstacle_, decimals);
-
+                    
                     auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
                     
                     if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
                     {
-                        adjacency_list_tuples[current].push_back(neighbor_tuple);
+                        adjacencyListTuplesFromOrigin[current].push_back(neighbor_tuple);
                     }
                 }
-
-
-
-
 
                 int i = 2;
                 float new_x2 = 0.0, new_y2 = 0.0, new_z2 = 0.0;
                 bool pode1 = true, pode2 = true, pode3 = true, pode4 = true, pode5 = true, pode6 = true, pode7 = true, pode8 = true;
+
+
+
 
                 while(i <= diagonalEdges_)
                 {
@@ -467,7 +480,7 @@ private:
                             
                             if(pode1 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                             
                         }
@@ -509,7 +522,7 @@ private:
                             
                             if(pode2 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
 
@@ -549,7 +562,7 @@ private:
                             
                             if(pode3 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
                         
@@ -587,7 +600,7 @@ private:
                             
                             if(pode4 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
 
@@ -629,7 +642,7 @@ private:
                             
                             if(pode5 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
                         
@@ -670,7 +683,7 @@ private:
                             
                             if(pode6 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
 
@@ -711,7 +724,7 @@ private:
                             
                             if(pode7 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
                         
@@ -752,7 +765,7 @@ private:
                             
                             if(pode8 == true)
                             {
-                                adjacency_list_tuples[current].push_back(index);
+                                adjacencyListTuplesFromOrigin[current].push_back(index);
                             }
                         }
                         
@@ -761,11 +774,51 @@ private:
               
                     i++;
                 }
-    
-
 
             }
-            
+                
+                
+
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+                if(shared_explored.find(current) != shared_explored.end())
+                {
+                    std::vector<std::tuple<float, float, float>> path;
+                    std::vector<std::tuple<float, float, float>> reversedPath;
+
+                    found = true;
+                       
+                    
+                    path.insert(path.begin(), current);
+                    
+                    while (nodesFromOrigin.find(current) != nodesFromOrigin.end() && 
+                        current != start_tuple) {
+                        current = nodesFromOrigin[current].parent;
+                        path.insert(path.begin(), current);
+                    }
+
+                    current = path[path.size() - 1];
+                
+                    while (nodesFromDestination.find(current) != nodesFromDestination.end()) {
+                        current = nodesFromDestination[current].parent;
+                        reversedPath.insert(reversedPath.begin(), current);
+                    }
+                  
+
+                    std::reverse(reversedPath.begin(), reversedPath.end());
+
+                    std::vector<std::tuple<float, float, float>> fullPath = path;
+                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
+
+                  
+                    return fullPath;
+                }
+
+                
+            }
+
+        
+        
             if (current == goal_tuple) 
             {
                 std::vector<std::tuple<float, float, float>> path;
@@ -773,40 +826,584 @@ private:
                 
                 path.insert(path.begin(), current_vertex);
                 
-                while (nodes.find(current_vertex) != nodes.end() && 
+                while (nodesFromOrigin.find(current_vertex) != nodesFromOrigin.end() && 
                     current_vertex != start_tuple) {
-                    current_vertex = nodes[current_vertex].parent;
+                    current_vertex = nodesFromOrigin[current_vertex].parent;
                     path.insert(path.begin(), current_vertex);
                 }
-                
+               
                 return path;
             }
             
-           
-            for (const auto& neighbor : adjacency_list_tuples[current])
+        
+            for (const auto& neighbor : adjacencyListTuplesFromOrigin[current])
             {
-                if (nodes.find(neighbor) != nodes.end() && nodes[neighbor].closed)
+                if (nodesFromOrigin.find(neighbor) != nodesFromOrigin.end() && nodesFromOrigin[neighbor].closed)
                     continue;
                 
-                float tentative_g_score = nodes[current].g_score + heuristic(current, neighbor);
+                float tentative_g_score = nodesFromOrigin[current].g_score + heuristic(current, neighbor);
                 
-                if (nodes.find(neighbor) == nodes.end() || tentative_g_score < nodes[neighbor].g_score) 
+                if (nodesFromOrigin.find(neighbor) == nodesFromOrigin.end() || tentative_g_score < nodesFromOrigin[neighbor].g_score) 
                 {
-                    nodes[neighbor].parent = current;
-                    nodes[neighbor].g_score = tentative_g_score;
-                    nodes[neighbor].f_score = tentative_g_score + heuristic(neighbor, goal_tuple);
-                    open_set.push({nodes[neighbor].f_score, neighbor});
+                    nodesFromOrigin[neighbor].parent = current;
+                    nodesFromOrigin[neighbor].g_score = tentative_g_score;
+                    nodesFromOrigin[neighbor].f_score = tentative_g_score + heuristic(neighbor, goal_tuple);
+                    open_set.push({nodesFromOrigin[neighbor].f_score, neighbor});
                 }
             }
             
-            adjacency_list_tuples.erase(current);
+            adjacencyListTuplesFromOrigin.erase(current);
+
+        }
+        RCLCPP_WARN(this->get_logger(), "It is not possible to reach the destination.");
+        return {};
+    }
+
+      
+    std::vector<std::tuple<float, float, float>> runAStarFromDestination(float start[3], float goal[3]) 
+    {
+   
+        
+        auto offsets1 = getOffsets(distanceToObstacle_);
+        
+        std::tuple<float, float, float> start_tuple = std::make_tuple(start[0], start[1], start[2]);
+        std::tuple<float, float, float> goal_tuple = std::make_tuple(goal[0], goal[1], goal[2]);
+        
+        float new_x = 0.0, new_y = 0.0, new_z = 0.0;
+        bool findNavigableVertice = false;
+        
+        
+        for(int i = 1; i <= 2; i++)
+        {
+            for (int a = 0; a < 26; a++) 
+            {
+                new_x = roundToMultiple(std::get<0>(start_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
+                new_y = roundToMultiple(std::get<1>(start_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
+                new_z = roundToMultiple(std::get<2>(start_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
+                
+                auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
+                    static_cast<float>(new_y), 
+                    static_cast<float>(new_z));
+                
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                { 
+                    adjacencyListTuplesFromDestination[start_tuple].push_back(neighbor_tuple);
+                    findNavigableVertice = true;
+                }
+            }
+
+            if(findNavigableVertice == true)
+            {
+                break;
+            }
         }
         
+        if(findNavigableVertice == false) 
+        {
+            RCLCPP_WARN(this->get_logger(), "The robot is too far of the navigable area.");
+            return {};
+        }
+        
+      
+        bool findNavigableGoalVertice = false;
+        
+        for(int i = 1; i <= 2; i++)
+        {
+            for (int a = 0; a < 26; a++) 
+            {
+                new_x = roundToMultiple(std::get<0>(goal_tuple) + (offsets1[a][0] * i), distanceToObstacle_, decimals);
+                new_y = roundToMultiple(std::get<1>(goal_tuple) + (offsets1[a][1] * i), distanceToObstacle_, decimals);
+                new_z = roundToMultiple(std::get<2>(goal_tuple) + (offsets1[a][2] * i), distanceToObstacle_, decimals);
+                
+                auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
+                    static_cast<float>(new_y), 
+                    static_cast<float>(new_z));
+                
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                { 
+                    adjacencyListTuplesFromDestination[neighbor_tuple].push_back(goal_tuple);
+                    findNavigableGoalVertice = true;
+                }
+            }
+
+            if(findNavigableGoalVertice == true)
+            {
+                break;
+            }
+        }
+        
+        if(findNavigableGoalVertice == false)
+        {
+            RCLCPP_WARN(this->get_logger(), "Destination is too far of the navigable area. Increase navigable area.");
+            return {};
+        }
+        
+        auto heuristic = [](const std::tuple<float, float, float>& a, const std::tuple<float, float, float>& b) {
+            float x1 = std::get<0>(a);
+            float y1 = std::get<1>(a);
+            float z1 = std::get<2>(a);
+            
+            float x2 = std::get<0>(b);
+            float y2 = std::get<1>(b);
+            float z2 = std::get<2>(b);
+            
+            return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2) + std::pow(z2 - z1, 2));
+        };
+        
+        nodesFromDestination[start_tuple].g_score = 0;
+        nodesFromDestination[start_tuple].f_score = heuristic(start_tuple, goal_tuple);
+        
+        struct TupleCompare {
+            bool operator()(const std::pair<float, std::tuple<float, float, float>>& a, 
+                            const std::pair<float, std::tuple<float, float, float>>& b) const {
+                return a.first > b.first;
+            }
+        };
+        
+        std::priority_queue<
+            std::pair<float, std::tuple<float, float, float>>,
+            std::vector<std::pair<float, std::tuple<float, float, float>>>,
+            TupleCompare
+        > open_set;
+        
+        open_set.push({nodesFromDestination[start_tuple].f_score, start_tuple});
+        
+        while (!open_set.empty()) 
+        {
+        
+            auto current_pair = open_set.top();
+            open_set.pop();
+            auto current = current_pair.second;
+            
+
+
+            if (nodesFromDestination[current].closed)
+                continue;
+                
+            if (current_pair.first > nodesFromDestination[current].f_score)
+                continue;
+                
+            nodesFromDestination[current].closed = true;
+            
+            if (current != start_tuple && current != goal_tuple)
+            {
+                for (int a = 0; a < 26; a++) 
+                {
+                    new_x = roundToMultiple(std::get<0>(current) + offsets1[a][0], distanceToObstacle_, decimals);
+                    new_y = roundToMultiple(std::get<1>(current) + offsets1[a][1], distanceToObstacle_, decimals);
+                    new_z = roundToMultiple(std::get<2>(current) + offsets1[a][2], distanceToObstacle_, decimals);
+                    
+                    auto neighbor_tuple = std::make_tuple(static_cast<float>(new_x), 
+                        static_cast<float>(new_y), 
+                        static_cast<float>(new_z));
+                    
+                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                    {
+                        adjacencyListTuplesFromDestination[current].push_back(neighbor_tuple);
+                    }
+                }
+
+                int i = 2;
+                float new_x2 = 0.0, new_y2 = 0.0, new_z2 = 0.0;
+                bool pode1 = true, pode2 = true, pode3 = true, pode4 = true, pode5 = true, pode6 = true, pode7 = true, pode8 = true;
+
+                
+                while(i <= diagonalEdges_)
+                {
+                   
+                    if(i > 1 || i < -1)
+                    {
+                   
+                        new_x2 = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z2 = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
+                        
+                        auto index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_z = roundToMultiple(std::get<2>(current), distanceToObstacle_, decimals);
+                        
+                        auto index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        auto index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        auto index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                       
+                        //Esse lixo de código é para não verificar todos os vértices toda vez
+                        if(pode1 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode1 = false;
+                            }
+                            
+                            if(pode1 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                            
+                        }
+                      
+                        
+                        
+
+                        new_x2 = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                       
+
+                        if(pode2 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode2 = false;
+                            }
+                            
+                            if(pode2 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+
+
+                        
+
+                        new_x2 = roundToMultiple(std::get<0>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current) + (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                       
+                        if(pode3 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode3 = false;
+                            }
+                            
+                            if(pode3 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+                        
+
+                        new_x2 = roundToMultiple(std::get<0>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        new_x = roundToMultiple(std::get<0>(current) - (distanceToObstacle_* (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                        
+                        new_x = roundToMultiple(std::get<0>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current) - (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                       
+                        if(pode4 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode4 = false;
+                            }
+                            
+                            if(pode4 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+
+
+    
+
+                        new_x2 = roundToMultiple(std::get<0>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        
+                        new_x = roundToMultiple(std::get<0>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * (i - 1) ), distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                    
+
+                        if(pode5 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode5 = false;
+                            }
+                            
+                            if(pode5 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+                        
+
+
+                        new_x2 = roundToMultiple(std::get<0>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        
+                        new_x = roundToMultiple(std::get<0>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * (i - 1) ), distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) + (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                    
+
+                        if(pode6 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode6 = false;
+                            }
+                            
+                            if(pode6 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+
+
+
+                        new_x2 = roundToMultiple(std::get<0>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        
+                        new_x = roundToMultiple(std::get<0>(current) + distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * (i - 1) ), distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                    
+                        
+                        if(pode7 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode7 = false;
+                            }
+                            
+                            if(pode7 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+                        
+    
+
+                        new_x2 = roundToMultiple(std::get<0>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y2 = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index = std::make_tuple(static_cast<float>(new_x2), static_cast<float>(new_y2), static_cast<float>(new_z2));
+
+                        
+                        new_x = roundToMultiple(std::get<0>(current) - distanceToObstacle_, distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * (i - 1) ), distanceToObstacle_, decimals);
+                        
+                        
+                        index1 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * i), distanceToObstacle_, decimals);
+                        
+                        
+                        index2 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+
+                        new_x = roundToMultiple(std::get<0>(current), distanceToObstacle_, decimals);
+                        new_y = roundToMultiple(std::get<1>(current) - (distanceToObstacle_ * (i - 1)), distanceToObstacle_, decimals);
+                        
+                        
+                        index3 = std::make_tuple(static_cast<float>(new_x), static_cast<float>(new_y), static_cast<float>(new_z));
+                    
+
+                        if(pode8 == true) 
+                        {
+                            if(obstaclesVertices.find(index) != obstaclesVertices.end() || obstaclesVertices.find(index1) != obstaclesVertices.end() || obstaclesVertices.find(index2) != obstaclesVertices.end() || obstaclesVertices.find(index3) != obstaclesVertices.end())
+                            {
+                                pode8 = false;
+                            }
+                            
+                            if(pode8 == true)
+                            {
+                                adjacencyListTuplesFromDestination[current].push_back(index);
+                            }
+                        }
+                        
+
+                    }
+              
+                    i++;
+                }
+            }
+
+
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+                
+                shared_explored.insert(current);
+
+                if(found == true)
+                {
+                    return {};
+                }
+
+            }
+
+
+            if (current == goal_tuple) 
+            {
+                std::vector<std::tuple<float, float, float>> path;
+                auto current_vertex = current;
+                
+                path.insert(path.begin(), current_vertex);
+                
+                while (nodesFromDestination.find(current_vertex) != nodesFromDestination.end() && 
+                    current_vertex != start_tuple) {
+                    current_vertex = nodesFromDestination[current_vertex].parent;
+                    path.insert(path.begin(), current_vertex);
+                }
+               
+
+                return path;
+            }
+            
+        
+            for (const auto& neighbor : adjacencyListTuplesFromDestination[current])
+            {
+                if (nodesFromDestination.find(neighbor) != nodesFromDestination.end() && nodesFromDestination[neighbor].closed)
+                    continue;
+                
+                float tentative_g_score = nodesFromDestination[current].g_score + heuristic(current, neighbor);
+                
+                if (nodesFromDestination.find(neighbor) == nodesFromDestination.end() || tentative_g_score < nodesFromDestination[neighbor].g_score) 
+                {
+                    nodesFromDestination[neighbor].parent = current;
+                    nodesFromDestination[neighbor].g_score = tentative_g_score;
+                    nodesFromDestination[neighbor].f_score = tentative_g_score + heuristic(neighbor, goal_tuple);
+                    open_set.push({nodesFromDestination[neighbor].f_score, neighbor});
+                }
+            }
+            
+            adjacencyListTuplesFromDestination.erase(current);
+
+
+        }
+
         RCLCPP_WARN(this->get_logger(), "It is not possible to reach the destination.");
         return {};
     }
 
 
+
+ 
     void storeEdgesInPath(std::vector<std::tuple<float, float, float>>& path) 
     {
         verticesDijkstra.clear();
@@ -1037,13 +1634,86 @@ private:
 
     }
 
+    
+  
+
+    int l = 0;
+    float tempo_medio = 0.0, soma_total = 0.0;
+    void runBidirectionalSearch(float start[3], float end[3]) 
+    {
+        
+
+        std::barrier start_barrier(2);
+        std::barrier end_barrier(2);
+
+        std::thread origin_thread([this, &start_barrier, &end_barrier, &start, &end]() 
+        {
+            start_barrier.arrive_and_wait();
+
+          
+            auto start_time_ = std::chrono::high_resolution_clock::now();
+
+            std::vector<std::tuple<float, float, float>> shortestPath = runAStarFromOrigin(start, end);
+
+            storeEdgesInPath(shortestPath);
+            publisher_dijkstra_path();
+
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<float> duration = end_time - start_time_;
+            l++;
+            soma_total = soma_total + duration.count();
+            tempo_medio = (soma_total / l);
+            
+            RCLCPP_INFO(this->get_logger(), "Bidirectional A* execution time: %.10f", duration.count());
+            RCLCPP_INFO(this->get_logger(), "Medium bidirection A* execution time: %.10f", tempo_medio);
+            end_barrier.arrive_and_wait();
+
+            {
+                std::lock_guard<std::mutex> lock(path_data_mutex);
+                shared_explored.clear();
+                nodesFromOrigin.clear();
+                adjacencyListTuplesFromOrigin.clear();
+                nodesFromDestination.clear();
+                adjacencyListTuplesFromDestination.clear();
+                found = false;
+            }
+
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        });
+
+        std::thread destination_thread([this, &start_barrier, &end_barrier, &start, &end]() 
+        {
+            start_barrier.arrive_and_wait();
+
+            runAStarFromDestination(end, start);
+
+            end_barrier.arrive_and_wait();
+
+            {
+                std::lock_guard<std::mutex> lock(path_data_mutex);
+                shared_explored.clear();
+                nodesFromOrigin.clear();
+                adjacencyListTuplesFromOrigin.clear();
+                nodesFromDestination.clear();
+                adjacencyListTuplesFromDestination.clear();
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        });
+
+        origin_thread.join();
+        destination_thread.join();
+    }
+
+    
 
     /*
 
         PUBLISHERS.
 
     */
-
+    
     void publish_created_vertices()
     {
         sensor_msgs::msg::PointCloud2 cloud_msg_created_vertices;
@@ -1124,8 +1794,6 @@ private:
          publisher_not_rounded_created_vertices->publish(cloud_msg_created_not_rounded_created_vertices);
     }
 
-
-
     
     void publisher_dijkstra()
     {   
@@ -1133,8 +1801,7 @@ private:
         message.header.stamp = this->now();
         message.header.frame_id = "map";
 
-        for (const auto& vertex : verticesDijkstra) 
-        {
+        for (const auto& vertex : verticesDijkstra) {
             geometry_msgs::msg::Pose pose;
             pose.position.x = vertex.x;
             pose.position.y = vertex.y;
@@ -1152,12 +1819,15 @@ private:
     void publisher_dijkstra_path()
     {
         nav_msgs::msg::Path path_msg;
+        // Configura o header
         path_msg.header.stamp = this->now();
         path_msg.header.frame_id = "map";
 
+        // Para cada vértice em verticesDijkstra, cria um PoseStamped e adiciona ao path
         for (const auto& vertex : verticesDijkstra)
         {
             geometry_msgs::msg::PoseStamped pose_stamped;
+            // O header pode ter o mesmo timestamp do path ou um timestamp específico
             pose_stamped.header.stamp = this->now();
             pose_stamped.header.frame_id = "map";
             
@@ -1204,14 +1874,13 @@ private:
     }
 
 
-
     /*
     
         CALLBACKS.
 
     */
-    int l = 0;
-    float tempo_medio = 0.0, soma_total = 0.0;
+
+ 
     void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
     {
         verticesDestino_.clear();
@@ -1228,50 +1897,20 @@ private:
             destino.orientation_w = pose_in.orientation.w;
 
             verticesDestino_.push_back(destino);
-        }
         
-         
-        if(!verticesDestino_.empty())
-        {
-        
-            float dx = pose_x_ - static_cast<float>(verticesDestino_[i_].x);
-            float dy = pose_y_ - static_cast<float>(verticesDestino_[i_].y);
-            float dz = pose_z_ - static_cast<float>(verticesDestino_[i_].z);
-
-            float distanciaAteODestino = sqrt(dx * dx + dy * dy + dz * dz);
-
-            if(distanciaAteODestino <= distanceToObstacle_)
-            {
-                i_ = i_ + 1;
-            }
-
-       
-            float array_inicial[3] = {pose_x_, pose_y_, pose_z_};
-            float array_final[3] = {static_cast<float>(verticesDestino_[i_].x), static_cast<float>(verticesDestino_[i_].y), static_cast<float>(verticesDestino_[i_].z)};
-            
-            if(i_ == verticesDestino_.size())
-            {
-                i_ = 0;
-            }
-            
-            auto start_time_ = std::chrono::high_resolution_clock::now();
-            
-
-            std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
-           
-            storeEdgesInPath(shortestPath);
-          
-            auto end_time = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<float> duration = end_time - start_time_;  
-            l++;
-            soma_total = soma_total + duration.count();
-            tempo_medio = (soma_total / l);
-
-            adjacency_list.clear();
-
-            RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
-            RCLCPP_INFO(this->get_logger(), "Medium A* execution time: %.10f", tempo_medio);
         }
+
+        float start[3], end[3];
+
+        start[0] = pose_x_;
+        start[1] = pose_y_;
+        start[2] = pose_z_;
+
+        end[0] = static_cast<float>(verticesDestino_[i_].x);
+        end[1] = static_cast<float>(verticesDestino_[i_].y);
+        end[2] = static_cast<float>(verticesDestino_[i_].z);
+
+        runBidirectionalSearch(start, end);
     }
 
     void callback_removed_navigable_vertices(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -1336,15 +1975,18 @@ private:
             RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
         }
        
-        
+
 
       
     }
+
+
+    
     
    
 public:
-    AStar()
-     : Node("a_star")
+    BidirectionalAStar() 
+    : rclcpp::Node("bidirectional_a_star")
     {
     
      
@@ -1362,45 +2004,49 @@ public:
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
-            std::bind(&AStar::check_parameters, this));
-
-    
+            std::bind(&BidirectionalAStar::check_parameters, this));
+      
+   
+      
         decimals = countDecimals(distanceToObstacle_);
-     
+
 
         publisher_created_vertices = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_vertices_with_filter", 10);
 
         publisher_not_rounded_created_vertices = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_not_rounded_vertices_with_filter", 10);
  
         publisher_shortcut_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_shortcut_path", 10);
-
+ 
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+            "/obstacles_vertices", 10, std::bind(&BidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
-        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
-        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&AStar::publisher_dijkstra_path, this));
-
+        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
+        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&BidirectionalAStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);
-        timer_path_ = this->create_wall_timer(1ms, std::bind(&AStar::publisher_dijkstra, this));
+        timer_path_ = this->create_wall_timer(1ms, std::bind(&BidirectionalAStar::publisher_dijkstra, this));
         
 
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/rtabmap/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
+            "/rtabmap/odom", 10, std::bind(&BidirectionalAStar::callback_odom, this, std::placeholders::_1));
 
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-            "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
+            "/destinations", 10, std::bind(&BidirectionalAStar::callback_destinations, this, std::placeholders::_1));
 
 
-       
+            
     }
+
+    
+
 };
 
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) 
+{
     rclcpp::init(argc, argv);
     
-    rclcpp::spin(std::make_shared<AStar>());
+    rclcpp::spin(std::make_shared<BidirectionalAStar>());
     rclcpp::shutdown();
     return 0;
 }
