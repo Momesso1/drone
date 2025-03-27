@@ -2020,7 +2020,7 @@ public:
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "/obstacles_vertices", 10, std::bind(&BidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
-        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
+        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
         timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&BidirectionalAStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);

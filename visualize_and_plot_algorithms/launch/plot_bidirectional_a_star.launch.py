@@ -12,22 +12,22 @@ def generate_launch_description():
     
     parameters = [{
         "distanceToObstacle": 0.2,
-        "diagonalEdges": 3,
+        "diagonalEdges": 10,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
     }]
 
-    rviz_config_file = os.path.join(get_package_share_directory('algorithms'), 'rviz', 'default.rviz')
+  
+    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'bidirectional_a_star.rviz')
 
-    
       
     return LaunchDescription([
 
         
 
         Node(
-            package='algorithms',
-            executable='bidirectional_a_star',
+            package='visualize_and_plot_algorithms',
+            executable='plot_bidirectional_a_star',
             output='screen',
             parameters=parameters,
         ),
@@ -47,7 +47,7 @@ def generate_launch_description():
             parameters=parameters,
         ),
 
-        Node(
+       Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',

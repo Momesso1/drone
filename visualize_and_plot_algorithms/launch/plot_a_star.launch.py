@@ -12,14 +12,13 @@ def generate_launch_description():
     
     parameters = [{
         "distanceToObstacle": 0.2,
-        "diagonalEdges": 3,
+        "diagonalEdges": 10,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
-        "activate_only_with_obstacles": True
     }]
 
   
-    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'visualize_bidirectional_a_star_with_filter.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'visualize_a_star.rviz')
 
       
     return LaunchDescription([
@@ -28,7 +27,7 @@ def generate_launch_description():
 
         Node(
             package='visualize_and_plot_algorithms',
-            executable='visualize_bidirectional_a_star_with_filter',
+            executable='plot_a_star',
             output='screen',
             parameters=parameters,
         ),
@@ -48,7 +47,7 @@ def generate_launch_description():
             parameters=parameters,
         ),
 
-        Node(
+       Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',

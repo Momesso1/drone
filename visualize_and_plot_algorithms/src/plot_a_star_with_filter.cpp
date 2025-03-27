@@ -35,6 +35,7 @@
 #include <filesystem>
 #include "std_msgs/msg/float32.hpp"
 
+
 using namespace std::chrono_literals;
 
 namespace std 
@@ -90,7 +91,7 @@ std::ostream& operator<<(std::ostream& os, const std::tuple<T1, T2, T3>& t) {
 }
 
 
-class PlotAStar : public rclcpp::Node {
+class AStar : public rclcpp::Node {
 
 private:
 
@@ -143,18 +144,20 @@ private:
 
  
     //Publishers.
-    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr time_pub;
-    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heuristic_distance_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr time_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heuristic_distance_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr filter_time_pub;
 
     //Subscriptions.
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_navigable_removed_vertices;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_odom_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr subscription3_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr subscription_;
 
     //Timers.
+    rclcpp::TimerBase::SharedPtr timer_navegable_vertices_;
+    rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr timer_path_;
     rclcpp::TimerBase::SharedPtr timer_visualize_path_;
     rclcpp::TimerBase::SharedPtr parameterTimer;
@@ -163,13 +166,11 @@ private:
     size_t i_ = 0; 
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
-    float time = 0.0, heuristic_distance = 0.0;
+    float distanceToObstacle_, heuristic_distance = 0.0, filter_time = 0.0, time = 0.0;
+   
 
     int decimals = 0;
 
-    std::tuple<float, float, float> globalGoalIndex;
-    std::tuple<float, float, float> globalIndex;
 
     std::vector<std::tuple<float, float, float>> destinationEdges;
     std::vector<VertexDijkstra> verticesDestino_;
@@ -261,7 +262,7 @@ private:
         };
     }
     
-    std::vector<std::tuple<float, float, float>> runPlotAStar(float start[3], float goal[3]) 
+    std::vector<std::tuple<float, float, float>> runAStar(float start[3], float goal[3]) 
     {
         destinationEdges.clear();
         
@@ -802,55 +803,120 @@ private:
         return {};
     }
 
-    std::vector<int> reconstructPath(const std::unordered_map<int, int> &came_from, int current) 
+
+    void storeEdgesInPath(std::vector<std::tuple<float, float, float>>& path) 
     {
-        std::vector<int> path;
-        while (came_from.find(current) != came_from.end()) 
-        {
-            path.push_back(current);
-            current = came_from.at(current);
-        }
-
-        path.push_back(current);
-
-        std::reverse(path.begin(), path.end());
-            
-        
-        return path;
-    }
-
-    void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
-    {
-        shortestPathEdges.clear();
         verticesDijkstra.clear();
-        heuristic_distance = 0.0;
-    
+        
         if (path.empty()) {
             return;
         }
     
-        // Processar as arestas do caminho
-        for (size_t i = 0; i < path.size() - 1; i++) 
+        auto start_time_ = std::chrono::high_resolution_clock::now();
+        int k = 0;
+
+        while (k < static_cast<int>(path.size()) - 1) 
         {
-            int u = i;  // Usando o índice para representar os vértices
-            int v = i + 1;
-            shortestPathEdges.push_back({u, v});
+            bool shortcutFound = false;
+            for (int i = static_cast<int>(path.size()) - 1; i > k; i--) 
+            {
+                std::tuple<float, float, float> A {
+                    std::get<0>(path[k]),
+                    std::get<1>(path[k]),
+                    std::get<2>(path[k])
+                };
+                std::tuple<float, float, float> B {
+                    std::get<0>(path[i]),
+                    std::get<1>(path[i]),
+                    std::get<2>(path[i])
+                };
+        
+                float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
+                float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
+        
+                float dx = bx - ax, dy = by - ay, dz = bz - az;
+                float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        
+                if (distance == 0) 
+                {
+                    continue;
+                }
+        
+                float ux = dx / distance;
+                float uy = dy / distance;
+                float uz = dz / distance;
+        
+                float step = distanceToObstacle_;
+                float t = 0.0f;
+                bool obstacleFound = false;
+                auto offsets1 = getOffsets(distanceToObstacle_);
+        
+                while (t < distance && obstacleFound == false) 
+                {
+                    std::tuple<float, float, float> point;
+                    std::get<0>(point) = ax + t * ux;
+                    std::get<1>(point) = ay + t * uy;
+                    std::get<2>(point) = az + t * uz;
+        
+                    double new_x = roundToMultiple(std::get<0>(point), distanceToObstacle_, decimals);
+                    double new_y = roundToMultiple(std::get<1>(point), distanceToObstacle_, decimals);
+                    double new_z = roundToMultiple(std::get<2>(point), distanceToObstacle_, decimals);
+        
+                    auto neighbor_tuple = std::make_tuple(
+                        static_cast<float>(new_x), 
+                        static_cast<float>(new_y), 
+                        static_cast<float>(new_z)
+                    );
+                    
+                    if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end()) 
+                    {
+                        obstacleFound = true;
+                        break;
+                    }
+
+                    t += step;
+                }
+        
+                if (obstacleFound == false) 
+                {
+                    path.erase(path.begin() + k + 1, path.begin() + i);
+
+                    shortcutFound = true;
+
+                    break;  
+                }
+            }
+        
+            if (shortcutFound == true)
+            {
+                k++;
+            } 
+            else if(shortcutFound == false)
+            {
+                break;
+            }
+
         }
-    
-        // Processar os vértices do caminho
+
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> duration = end_time - start_time_; 
+
+        filter_time = duration.count();
+
+        RCLCPP_INFO(this->get_logger(), "A* filter execution time: %.10f", duration.count());
+
+            
         for (size_t i = 0; i < path.size(); i++) 
         {
             VertexDijkstra vertex;
             
-            // Acessando os elementos da tupla
             vertex.x = std::get<0>(path[i]);
             vertex.y = std::get<1>(path[i]);
             vertex.z = std::get<2>(path[i]);
     
-            // Cálculo da orientação entre os vértices
             if (i < path.size() - 1) 
             {
-                // Obter o próximo vértice no caminho
                 const std::tuple<float, float, float>& current_vertex = path[i];
                 const std::tuple<float, float, float>& next_vertex = path[i + 1];
     
@@ -861,20 +927,17 @@ private:
 
                 heuristic_distance = heuristic_distance + distance;
     
-                // Normalizar a direção
                 if (distance > 0.0f) {
                     dx /= distance;
                     dy /= distance;
                     dz /= distance;
                 }
     
-                // Criar o quaternion com a direção normalizada
                 Eigen::Vector3f direction(dx, dy, dz);
-                Eigen::Vector3f reference(1.0f, 0.0f, 0.0f); // Vetor de referência
+                Eigen::Vector3f reference(1.0f, 0.0f, 0.0f); 
     
                 Eigen::Quaternionf quaternion = Eigen::Quaternionf::FromTwoVectors(reference, direction);
     
-                // Definir a orientação
                 vertex.orientation_x = quaternion.x();
                 vertex.orientation_y = quaternion.y();
                 vertex.orientation_z = quaternion.z();
@@ -882,14 +945,12 @@ private:
             } 
             else 
             {
-                // Para o último vértice, sem orientação
                 vertex.orientation_x = 0.0;
                 vertex.orientation_y = 0.0;
                 vertex.orientation_z = 0.0;
                 vertex.orientation_w = 1.0;
             }
     
-            // Adicionar o vértice processado à lista
             verticesDijkstra.push_back(vertex);
         }
     }
@@ -900,6 +961,7 @@ private:
         PUBLISHERS.
 
     */
+
 
     
     void publisher_dijkstra()
@@ -960,8 +1022,8 @@ private:
         CALLBACKS.
 
     */
-
- 
+    int l = 0;
+    float tempo_medio = 0.0, soma_total = 0.0;
     void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
     {
         verticesDestino_.clear();
@@ -1005,20 +1067,25 @@ private:
             }
             
             auto start_time_ = std::chrono::high_resolution_clock::now();
-            std::vector<std::tuple<float, float, float>> shortestPath = runPlotAStar(array_inicial, array_final);
+            
+
+            std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
            
             storeEdgesInPath(shortestPath);
           
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;  
-    
+            l++;
+            soma_total = soma_total + duration.count();
+            tempo_medio = (soma_total / l);
 
             time = duration.count();
             timer_callback();
 
             adjacency_list.clear();
+
             RCLCPP_INFO(this->get_logger(), "A* execution time: %.10f", duration.count());
-       
+            RCLCPP_INFO(this->get_logger(), "Medium A* execution time: %.10f", tempo_medio);
         }
     }
 
@@ -1057,6 +1124,23 @@ private:
         pose_z_ = msg->pose.pose.position.z;
     }
 
+    void timer_callback()
+    {
+        auto float_msg = std_msgs::msg::Float32();
+        float_msg.data = time;  
+        time_pub->publish(float_msg);
+
+        auto heuristic_distance_msg = std_msgs::msg::Float32();
+        heuristic_distance_msg.data = heuristic_distance;  
+        heuristic_distance_pub_->publish(heuristic_distance_msg);
+
+        auto filter_time_msg = std_msgs::msg::Float32();
+        filter_time_msg.data = filter_time;  
+        filter_time_pub->publish(filter_time_msg);
+
+
+    }
+
 
    
     void check_parameters()
@@ -1084,38 +1168,14 @@ private:
             RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
         }
        
-    }
-
-    float linearX = 0.0, linearY = 0.0, linearZ = 0.0, angularX = 0.0, angularY = 0.0, angularZ = 0.0;
-
-    void timer_callback()
-    {
-        auto float_msg = std_msgs::msg::Float32();
-        float_msg.data = time;  
-        time_pub->publish(float_msg);
-
-        auto heuristic_distance_msg = std_msgs::msg::Float32();
-        heuristic_distance_msg.data = heuristic_distance;  
-        heuristic_distance_pub_->publish(heuristic_distance_msg);
-    }
-
-    void topic_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
-    {
-        // Exibe os valores da velocidade linear e angular
         
-        // Atualiza as variáveis membro
-        linearX = msg->linear.x;
-        linearY = msg->linear.y;
-        linearZ = msg->linear.z;
 
-        angularX = msg->angular.x;
-        angularY = msg->angular.y;
-        angularZ = msg->angular.z;
+      
     }
     
    
 public:
-    PlotAStar()
+    AStar()
      : Node("a_star")
     {
     
@@ -1132,43 +1192,35 @@ public:
         RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
 
-
-
-        time_pub = this->create_publisher<std_msgs::msg::Float32>("/a_star_time", 10);
-
-        heuristic_distance_pub_ = this->create_publisher<std_msgs::msg::Float32>("/a_star_heuristic_distance", 10);
-    
-
-
-        subscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-            "/simple_drone/cmd_vel", 10,
-            std::bind(&PlotAStar::topic_callback, this, std::placeholders::_1));
-      
-    
-
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
-            std::bind(&PlotAStar::check_parameters, this));
+            std::bind(&AStar::check_parameters, this));
 
     
         decimals = countDecimals(distanceToObstacle_);
-       
+
+        time_pub = this->create_publisher<std_msgs::msg::Float32>("/a_star_with_filter_time", 10);
+
+        heuristic_distance_pub_ = this->create_publisher<std_msgs::msg::Float32>("/a_star_with_filter_heuristic_distance", 10);
+
+        filter_time_pub = this->create_publisher<std_msgs::msg::Float32>("/a_star_filter_time", 10);
+
  
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/obstacles_vertices", 10, std::bind(&PlotAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+            "/obstacles_vertices", 10, std::bind(&AStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
         publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
-        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&PlotAStar::publisher_dijkstra_path, this));
+        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&AStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);
-        timer_path_ = this->create_wall_timer(1ms, std::bind(&PlotAStar::publisher_dijkstra, this));
+        timer_path_ = this->create_wall_timer(1ms, std::bind(&AStar::publisher_dijkstra, this));
         
 
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/rtabmap/odom", 10, std::bind(&PlotAStar::callback_odom, this, std::placeholders::_1));
+            "/rtabmap/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
 
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-            "/destinations", 10, std::bind(&PlotAStar::callback_destinations, this, std::placeholders::_1));
+            "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
 
 
        
@@ -1179,7 +1231,7 @@ public:
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     
-    rclcpp::spin(std::make_shared<PlotAStar>());
+    rclcpp::spin(std::make_shared<AStar>());
     rclcpp::shutdown();
     return 0;
 }

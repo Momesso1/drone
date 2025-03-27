@@ -156,7 +156,8 @@ private:
     //Publishers.
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr twist_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pose_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr float_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr time_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heuristic_distance_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_navegable_vertices_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
@@ -178,7 +179,7 @@ private:
     size_t i_ = 0; 
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_, time = 0;
+    float distanceToObstacle_, time = 0, heuristic_distance = 0.0;
    
     int decimals = 0;
 
@@ -1428,7 +1429,8 @@ private:
     void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
     {
         verticesDijkstra.clear();
-    
+        heuristic_distance = 0.0;
+
         if (path.empty()) {
             return;
         }
@@ -1455,6 +1457,8 @@ private:
                 float dz = std::get<2>(next_vertex) - std::get<2>(current_vertex);
                 float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
     
+                heuristic_distance = heuristic_distance + distance;
+
                 if (distance > 0.0f) {
                     dx /= distance;
                     dy /= distance;
@@ -1515,14 +1519,6 @@ private:
 
             end_barrier.arrive_and_wait();
             float distance = 0.0;
-
-            for(int i = 0; i < shortestPath.size() - 1; i++)
-            {
-                distance = distance + std::sqrt(std::pow(std::get<0>(shortestPath[i + 1]) - std::get<0>(shortestPath[i]), 2) + std::pow(std::get<1>(shortestPath[i + 1]) - std::get<1>(shortestPath[i]), 2) + std::pow(std::get<2>(shortestPath[i + 1]) - std::get<2>(shortestPath[i]), 2));
-            }
-
-            std::cout << shortestPath.size() << std::endl;
-            RCLCPP_INFO(this->get_logger(), "Distance: %.10f", distance);
 
 
             time = duration.count();
@@ -1740,28 +1736,11 @@ private:
     {
         auto float_msg = std_msgs::msg::Float32();
         float_msg.data = time;  
-        float_pub_->publish(float_msg);
+        time_pub->publish(float_msg);
 
-        auto twist_msg = geometry_msgs::msg::Twist();
-        twist_msg.linear.x = linearX;
-        twist_msg.linear.y = linearY;
-        twist_msg.linear.z = linearZ;
-        twist_msg.angular.x = angularX;
-        twist_msg.angular.y = angularY;
-        twist_msg.angular.z = angularZ;
-        twist_pub_->publish(twist_msg);
-
-        // Publica mensagem do tipo Pose
-        auto pose_msg = geometry_msgs::msg::Pose();
-        pose_msg.position.x = pose_x_;
-        pose_msg.position.y = pose_y_;
-        pose_msg.position.z = pose_z_;
-        pose_msg.orientation.x = 0.0;
-        pose_msg.orientation.y = 0.0;
-        pose_msg.orientation.z = 0.0;
-        pose_msg.orientation.w = 1.0;
-        pose_pub_->publish(pose_msg);
-    
+        auto heuristic_distance_msg = std_msgs::msg::Float32();
+        heuristic_distance_msg.data = heuristic_distance;  
+        heuristic_distance_pub_->publish(heuristic_distance_msg);
     }
 
     void topic_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -1805,11 +1784,10 @@ public:
             std::bind(&PlotBidirectionalAStar::check_parameters, this));
       
 
-        float_pub_ = this->create_publisher<std_msgs::msg::Float32>("/time", 10);
+        time_pub = this->create_publisher<std_msgs::msg::Float32>("/bidirectional_a_star_time", 10);
 
-        twist_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/velocity", 10);
-        
-        pose_pub_ = this->create_publisher<geometry_msgs::msg::Pose>("/pose", 10);
+        heuristic_distance_pub_ = this->create_publisher<std_msgs::msg::Float32>("/bidirectional_a_star_heuristic_distance", 10);
+    
 
         subscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
             "/simple_drone/cmd_vel", 10,
@@ -1823,7 +1801,7 @@ public:
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "/obstacles_vertices", 10, std::bind(&PlotBidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
-        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("visualize_path", 10);
+        publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
         timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&PlotBidirectionalAStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);

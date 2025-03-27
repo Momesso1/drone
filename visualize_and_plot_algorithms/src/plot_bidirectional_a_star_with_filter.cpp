@@ -37,6 +37,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include "std_msgs/msg/float32.hpp"
 
 using namespace std::chrono_literals;
 
@@ -93,7 +94,7 @@ std::ostream& operator<<(std::ostream& os, const std::tuple<T1, T2, T3>& t) {
 }
 
 
-class VIsualizeBidirectionalAStar : public rclcpp::Node {
+class BidirectionalAStar : public rclcpp::Node {
 
 private:
 
@@ -155,9 +156,10 @@ private:
     //Publishers.
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher_path_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_navegable_vertices_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_created_vertices_from_origin;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_created_vertices_from_destination;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr publisher_nav_path_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr time_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heuristic_distance_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr filter_time_pub;
 
     //Subscriptions.
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_navigable_removed_vertices;
@@ -173,11 +175,11 @@ private:
     rclcpp::TimerBase::SharedPtr parameterTimer1;
 
     size_t i_ = 0; 
-    bool found = false, activate_only_with_obstacles = false;
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
-    int decimals = 0, time_between_points = 1;
+    float distanceToObstacle_, heuristic_distance = 0.0, filter_time = 0.0, time = 0.0;
+   
+    int decimals = 0;
 
     std::thread thread_from_origin;
     std::thread thread_from_destination;
@@ -187,20 +189,24 @@ private:
     std::mutex nodes_from_origin; 
     std::mutex mtx;
 
+    bool found = false;
+
     std::condition_variable cv;
+
   
     std::atomic<bool> running{true};
 
+
     std::tuple<float, float, float> globalGoalIndex;
     std::tuple<float, float, float> globalIndex;
+
 
     std::vector<std::tuple<float, float, float>> destinationEdges;
     std::vector<VertexDijkstra> verticesDestino_;
     std::vector<VertexDijkstra> verticesDijkstra;
     std::vector<Edge> shortestPathEdges;
     
-    std::unordered_set<std::tuple<float, float,float>> createdVerticesFromOrigin;
-    std::unordered_set<std::tuple<float, float,float>> createdVerticesFromDestination;
+
     std::unordered_map<std::tuple<float, float, float>, Node> nodesFromOrigin;
     std::unordered_map<std::tuple<float, float, float>, Node> nodesFromDestination;
     std::unordered_set<std::tuple<float, float, float>> shared_explored;
@@ -208,7 +214,6 @@ private:
     std::unordered_map<std::tuple<float, float, float>, std::vector<std::tuple<float, float, float>>> adjacencyListTuplesFromDestination;
     std::unordered_set<std::tuple<float, float, float>> obstaclesVertices;
     std::unordered_map<int, Vertex> navigableVerticesMapInteger;
-
 
     inline float roundToMultiple(float value, float multiple, int decimals) {
         if (multiple == 0.0) return value; // Evita divisão por zero
@@ -427,15 +432,6 @@ private:
                 continue;
                 
             nodesFromOrigin[current].closed = true;
-
-
-            createdVerticesFromOrigin.insert(current);
-
-            publish_created_vertices_from_origin();
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
-        
-
 
            
             if (current != start_tuple && current != goal_tuple)
@@ -1007,12 +1003,6 @@ private:
                 continue;
                 
             nodesFromDestination[current].closed = true;
-
-            createdVerticesFromDestination.insert(current);
-
-            publish_created_vertices_from_destination();
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
             
             if (current != start_tuple && current != goal_tuple)
             {
@@ -1434,15 +1424,111 @@ private:
 
  
 
-    void storeEdgesInPath(const std::vector<std::tuple<float, float, float>>& path) 
+    void storeEdgesInPath(std::vector<std::tuple<float, float, float>>& path) 
     {
         verticesDijkstra.clear();
     
         if (path.empty()) {
             return;
         }
+        
+
+        auto start_time_ = std::chrono::high_resolution_clock::now();
+        int k = 0;
+
+        while (k < static_cast<int>(path.size()) - 1) 
+        {
+            bool shortcutFound = false;
+            for (int i = static_cast<int>(path.size()) - 1; i > k; i--) 
+            {
+                std::tuple<float, float, float> A {
+                    std::get<0>(path[k]),
+                    std::get<1>(path[k]),
+                    std::get<2>(path[k])
+                };
+                std::tuple<float, float, float> B {
+                    std::get<0>(path[i]),
+                    std::get<1>(path[i]),
+                    std::get<2>(path[i])
+                };
+        
+                float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
+                float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
+        
+                float dx = bx - ax, dy = by - ay, dz = bz - az;
+                float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        
+                if (distance == 0) 
+                {
+                    continue;
+                }
+        
+                float ux = dx / distance;
+                float uy = dy / distance;
+                float uz = dz / distance;
+        
+                float step = distanceToObstacle_;
+                float t = 0.0f;
+                bool obstacleFound = false;
+                auto offsets1 = getOffsets(distanceToObstacle_);
+        
+                while (t < distance && obstacleFound == false) 
+                {
+                    std::tuple<float, float, float> point;
+                    std::get<0>(point) = ax + t * ux;
+                    std::get<1>(point) = ay + t * uy;
+                    std::get<2>(point) = az + t * uz;
+        
+                    double new_x = roundToMultiple(std::get<0>(point), distanceToObstacle_, decimals);
+                    double new_y = roundToMultiple(std::get<1>(point), distanceToObstacle_, decimals);
+                    double new_z = roundToMultiple(std::get<2>(point), distanceToObstacle_, decimals);
+        
+                    auto neighbor_tuple = std::make_tuple(
+                        static_cast<float>(new_x), 
+                        static_cast<float>(new_y), 
+                        static_cast<float>(new_z)
+                    );
+                    
+                    if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end()) 
+                    {
+                        obstacleFound = true;
+                        break;
+                    }
+
+                    t += step;
+                }
+        
+                if (obstacleFound == false) 
+                {
+                    path.erase(path.begin() + k + 1, path.begin() + i);
+
+                    shortcutFound = true;
+
+                    break;  
+                }
+            }
+        
+            if (shortcutFound == true)
+            {
+                k++;
+            } 
+            else if(shortcutFound == false)
+            {
+                break;
+            }
+
+        }
+
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> duration = end_time - start_time_; 
+
+        filter_time = duration.count();
+
+        RCLCPP_INFO(this->get_logger(), "Bidirectional A* filter execution time: %.10f", duration.count());
     
-       
+        heuristic_distance = 0.0;
+        
         for (size_t i = 0; i < path.size(); i++) 
         {
             VertexDijkstra vertex;
@@ -1464,6 +1550,8 @@ private:
                 float dz = std::get<2>(next_vertex) - std::get<2>(current_vertex);
                 float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
     
+                heuristic_distance = heuristic_distance + distance;
+
                 if (distance > 0.0f) {
                     dx /= distance;
                     dy /= distance;
@@ -1496,7 +1584,8 @@ private:
     
   
 
-
+    int l = 0;
+    float tempo_medio = 0.0, soma_total = 0.0;
     void runBidirectionalSearch(float start[3], float end[3]) 
     {
         
@@ -1518,9 +1607,15 @@ private:
 
             auto end_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> duration = end_time - start_time_;
+            l++;
+            soma_total = soma_total + duration.count();
+            tempo_medio = (soma_total / l);
 
+            time = duration.count();
+            timer_callback();
+            
             RCLCPP_INFO(this->get_logger(), "Bidirectional A* execution time: %.10f", duration.count());
-
+            RCLCPP_INFO(this->get_logger(), "Medium bidirection A* execution time: %.10f", tempo_medio);
             end_barrier.arrive_and_wait();
 
             {
@@ -1568,93 +1663,6 @@ private:
         PUBLISHERS.
 
     */
-
-    void publish_created_vertices_from_origin()
-    {
-        sensor_msgs::msg::PointCloud2 cloud_msgs_created_vertices_from_origin;
-        cloud_msgs_created_vertices_from_origin.header.stamp = this->get_clock()->now();
-        cloud_msgs_created_vertices_from_origin.header.frame_id = "map";
-
-        // Configuração dos campos do PointCloud2
-        cloud_msgs_created_vertices_from_origin.height = 1;  // Ponto único em cada linha
-        cloud_msgs_created_vertices_from_origin.width = createdVerticesFromOrigin.size(); // Quantidade de vértices
-        cloud_msgs_created_vertices_from_origin.is_dense = true;
-        cloud_msgs_created_vertices_from_origin.is_bigendian = false;
-        cloud_msgs_created_vertices_from_origin.point_step = 3 * sizeof(float); // x, y, z
-        cloud_msgs_created_vertices_from_origin.row_step = cloud_msgs_created_vertices_from_origin.point_step * cloud_msgs_created_vertices_from_origin.width;
-
-        // Adicionar campos de x, y, z
-        sensor_msgs::PointCloud2Modifier modifier(cloud_msgs_created_vertices_from_origin);
-        modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(cloud_msgs_created_vertices_from_origin.width);
-
-        // Preencher os dados do PointCloud2
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msgs_created_vertices_from_origin, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msgs_created_vertices_from_origin, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msgs_created_vertices_from_origin, "z");
-        for (const auto& vertex : createdVerticesFromOrigin) 
-        {
-           
-                *iter_x = std::get<0>(vertex);
-                *iter_y = std::get<1>(vertex);
-                *iter_z = std::get<2>(vertex);
-
-                ++iter_x;
-                ++iter_y;
-                ++iter_z;
-   
-            
-        }
-
-
-         publisher_created_vertices_from_origin->publish(cloud_msgs_created_vertices_from_origin);
-    }
-
-
-    void publish_created_vertices_from_destination()
-    {
-        sensor_msgs::msg::PointCloud2 cloud_msgs_created_vertices_from_destination;
-        cloud_msgs_created_vertices_from_destination.header.stamp = this->get_clock()->now();
-        cloud_msgs_created_vertices_from_destination.header.frame_id = "map";
-
-        // Configuração dos campos do PointCloud2
-        cloud_msgs_created_vertices_from_destination.height = 1;  // Ponto único em cada linha
-        cloud_msgs_created_vertices_from_destination.width = createdVerticesFromDestination.size(); // Quantidade de vértices
-        cloud_msgs_created_vertices_from_destination.is_dense = true;
-        cloud_msgs_created_vertices_from_destination.is_bigendian = false;
-        cloud_msgs_created_vertices_from_destination.point_step = 3 * sizeof(float); // x, y, z
-        cloud_msgs_created_vertices_from_destination.row_step = cloud_msgs_created_vertices_from_destination.point_step * cloud_msgs_created_vertices_from_destination.width;
-
-        // Adicionar campos de x, y, z
-        sensor_msgs::PointCloud2Modifier modifier(cloud_msgs_created_vertices_from_destination);
-        modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(cloud_msgs_created_vertices_from_destination.width);
-
-        // Preencher os dados do PointCloud2
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msgs_created_vertices_from_destination, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msgs_created_vertices_from_destination, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msgs_created_vertices_from_destination, "z");
-        for (const auto& vertex : createdVerticesFromDestination) 
-        {
-           
-                *iter_x = std::get<0>(vertex);
-                *iter_y = std::get<1>(vertex);
-                *iter_z = std::get<2>(vertex);
-
-                ++iter_x;
-                ++iter_y;
-                ++iter_z;
-   
-            
-        }
-
-
-         publisher_created_vertices_from_destination->publish(cloud_msgs_created_vertices_from_destination);
-    }
-
-
-
-
 
     
     void publisher_dijkstra()
@@ -1715,7 +1723,7 @@ private:
         CALLBACKS.
 
     */
-    bool obstaclesVerticesReceived = !activate_only_with_obstacles;
+
  
     void callback_destinations(const geometry_msgs::msg::PoseArray::SharedPtr msg) 
     {
@@ -1745,30 +1753,6 @@ private:
         end[0] = static_cast<float>(verticesDestino_[i_].x);
         end[1] = static_cast<float>(verticesDestino_[i_].y);
         end[2] = static_cast<float>(verticesDestino_[i_].z);
-        
-        /*
-
-            coloquei createdVertices.clear() aqui para poder ver o caminho gerado 
-            por 3 segundos depois que o A* foi executado.
-
-        */
-        if(!verticesDestino_.empty() && obstaclesVerticesReceived == true)
-        {
-            verticesDijkstra.clear();
-            createdVerticesFromOrigin.clear();
-            createdVerticesFromDestination.clear();
-    
-            // Publicar createdVertices vazio (só para tirar nuvem de pontos do rviz)
-            publish_created_vertices_from_origin();
-            publish_created_vertices_from_destination();
-    
-            RCLCPP_INFO(this->get_logger(), "Bidirectional A* will be executed in 3 seconds.");
-            std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-    
-            //Publicar caminho vaio para sair do rviz.
-            publisher_dijkstra_path();
-        }
-     
 
         runBidirectionalSearch(start, end);
     }
@@ -1795,11 +1779,7 @@ private:
             obstaclesVertices.insert(index);
             
         }
-        
-        if(!obstaclesVertices.empty())
-        {
-            obstaclesVerticesReceived = true; 
-        }
+       
         
     }
 
@@ -1812,21 +1792,37 @@ private:
         pose_z_ = msg->pose.pose.position.z;
     }
 
+    void timer_callback()
+    {
+        auto float_msg = std_msgs::msg::Float32();
+        float_msg.data = time;  
+        time_pub->publish(float_msg);
 
+        auto heuristic_distance_msg = std_msgs::msg::Float32();
+        heuristic_distance_msg.data = heuristic_distance;  
+        heuristic_distance_pub_->publish(heuristic_distance_msg);
+
+        auto filter_time_msg = std_msgs::msg::Float32();
+        filter_time_msg.data = filter_time;  
+        filter_time_pub->publish(filter_time_msg);
+
+
+    }
    
     void check_parameters()
     {
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        auto new_time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
-        auto new_activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
+   
+        
         
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
             std::cout << "\n" << std::endl;
-            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %.2f", distanceToObstacle_);          
+            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
+            RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          
         }
 
         if(new_diagonalEdges != diagonalEdges_)
@@ -1835,77 +1831,66 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
+            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
         }
        
-        if(new_time_between_points != time_between_points)
-        {
-            time_between_points = new_time_between_points;
-            RCLCPP_INFO(this->get_logger(), "time_between_points set to: %d ms", time_between_points);
-        }
 
-        if(new_activate_only_with_obstacles != activate_only_with_obstacles)
-        {
-            activate_only_with_obstacles = new_activate_only_with_obstacles;
-            RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles set to: %s", activate_only_with_obstacles ? "true" : "false");
-        }
 
       
     }
 
+
+    
+    
    
 public:
-    VIsualizeBidirectionalAStar() 
-    : rclcpp::Node("visualize_bidirectional_a_star")
+    BidirectionalAStar() 
+    : rclcpp::Node("bidirectional_a_star")
     {
+    
+     
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
-        this->declare_parameter<int>("time_between_points", 1);
-        this->declare_parameter<bool>("activate_only_with_obstacles", false);
 
-        
+
+        // Initialize parameters 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
-        activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
 
 
-        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
-        RCLCPP_INFO(this->get_logger(), "time_between_points is set to: %d ms", time_between_points);
-        RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles is set to: %s", activate_only_with_obstacles ? "true" : "false");
-
-
+        RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
-            std::bind(&VIsualizeBidirectionalAStar::check_parameters, this));
+            std::bind(&BidirectionalAStar::check_parameters, this));
       
    
       
         decimals = countDecimals(distanceToObstacle_);
        
+        time_pub = this->create_publisher<std_msgs::msg::Float32>("/bidirectional_a_star_with_filter_time", 10);
+
+        heuristic_distance_pub_ = this->create_publisher<std_msgs::msg::Float32>("/bidirectional_a_star_with_filter_heuristic_distance", 10);
+
+        filter_time_pub = this->create_publisher<std_msgs::msg::Float32>("/bidirectional_a_star_filter_time", 10);
+
  
         subscription_navigable_removed_vertices = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/obstacles_vertices", 10, std::bind(&VIsualizeBidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
+            "/obstacles_vertices", 10, std::bind(&BidirectionalAStar::callback_removed_navigable_vertices, this, std::placeholders::_1));
 
         publisher_nav_path_ = this->create_publisher<nav_msgs::msg::Path>("/visualize_path", 10);
-        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&VIsualizeBidirectionalAStar::publisher_dijkstra_path, this));
+        timer_visualize_path_ = this->create_wall_timer(100ms, std::bind(&BidirectionalAStar::publisher_dijkstra_path, this));
 
         publisher_path_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/path", 10);
-        timer_path_ = this->create_wall_timer(1ms, std::bind(&VIsualizeBidirectionalAStar::publisher_dijkstra, this));
-
-
-        publisher_created_vertices_from_origin = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_vertices_from_origin", 10);
-        publisher_created_vertices_from_destination = this->create_publisher<sensor_msgs::msg::PointCloud2>("/created_vertices_from_destination", 10);
-
+        timer_path_ = this->create_wall_timer(1ms, std::bind(&BidirectionalAStar::publisher_dijkstra, this));
         
 
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/rtabmap/odom", 10, std::bind(&VIsualizeBidirectionalAStar::callback_odom, this, std::placeholders::_1));
+            "/rtabmap/odom", 10, std::bind(&BidirectionalAStar::callback_odom, this, std::placeholders::_1));
 
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-            "/destinations", 10, std::bind(&VIsualizeBidirectionalAStar::callback_destinations, this, std::placeholders::_1));
+            "/destinations", 10, std::bind(&BidirectionalAStar::callback_destinations, this, std::placeholders::_1));
 
 
             
@@ -1920,7 +1905,7 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     
-    rclcpp::spin(std::make_shared<VIsualizeBidirectionalAStar>());
+    rclcpp::spin(std::make_shared<BidirectionalAStar>());
     rclcpp::shutdown();
     return 0;
 }

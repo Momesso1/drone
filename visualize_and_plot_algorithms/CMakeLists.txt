@@ -39,14 +39,17 @@ ament_target_dependencies(visualize_bidirectional_a_star rclcpp nav_msgs geometr
 add_executable(visualize_bidirectional_a_star_with_filter src/visualize_bidirectional_a_star_with_filter.cpp)
 ament_target_dependencies(visualize_bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
-
 add_executable(plot_a_star src/plot_a_star.cpp)
 ament_target_dependencies(plot_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
+add_executable(plot_a_star_with_filter src/plot_a_star_with_filter.cpp)
+ament_target_dependencies(plot_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 add_executable(plot_bidirectional_a_star src/plot_bidirectional_a_star.cpp)
 ament_target_dependencies(plot_bidirectional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
-
+add_executable(plot_bidirectional_a_star_with_filter src/plot_bidirectional_a_star_with_filter.cpp)
+ament_target_dependencies(plot_bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 
 target_link_libraries(visualize_a_star
@@ -92,8 +95,22 @@ target_link_libraries(plot_a_star
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(plot_a_star_with_filter
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
 
 target_link_libraries(plot_bidirectional_a_star
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+target_link_libraries(plot_bidirectional_a_star_with_filter
   ${rclcpp_LIBRARIES}
   ${std_msgs_LIBRARIES}
   ${GLEW_LIBRARIES}
@@ -118,7 +135,9 @@ install(TARGETS
   visualize_bidirectional_a_star_with_filter
   visualize_obstacles_graph
   plot_a_star
+  plot_a_star_with_filter
   plot_bidirectional_a_star
+  plot_bidirectional_a_star_with_filter
   DESTINATION lib/${PROJECT_NAME}
 )
 
