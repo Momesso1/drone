@@ -12,7 +12,7 @@ def generate_launch_description():
     
     parameters = [{
         "distanceToObstacle": 0.2,
-        "diagonalEdges": 10,
+        "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
         "time_between_points": 1, # In ms.
