@@ -434,6 +434,45 @@ private:
             publish_created_vertices_from_origin();
 
             std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
+
+
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+                if(shared_explored.find(current) != shared_explored.end())
+                {
+                    std::vector<std::tuple<float, float, float>> path;
+                    std::vector<std::tuple<float, float, float>> reversedPath;
+
+                    found = true;
+                       
+                    
+                    path.insert(path.begin(), current);
+                    
+                    while (nodesFromOrigin.find(current) != nodesFromOrigin.end() && 
+                        current != start_tuple) {
+                        current = nodesFromOrigin[current].parent;
+                        path.insert(path.begin(), current);
+                    }
+
+                    current = path[path.size() - 1];
+                
+                    while (nodesFromDestination.find(current) != nodesFromDestination.end()) {
+                        current = nodesFromDestination[current].parent;
+                        reversedPath.insert(reversedPath.begin(), current);
+                    }
+                  
+
+                    std::reverse(reversedPath.begin(), reversedPath.end());
+
+                    std::vector<std::tuple<float, float, float>> fullPath = path;
+                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
+
+                  
+                    return fullPath;
+                }
+
+                
+            }
         
 
 
@@ -802,43 +841,6 @@ private:
                 
                 
 
-            {
-                std::lock_guard<std::mutex> lock(nodes_from_destination);
-                if(shared_explored.find(current) != shared_explored.end())
-                {
-                    std::vector<std::tuple<float, float, float>> path;
-                    std::vector<std::tuple<float, float, float>> reversedPath;
-
-                    found = true;
-                       
-                    
-                    path.insert(path.begin(), current);
-                    
-                    while (nodesFromOrigin.find(current) != nodesFromOrigin.end() && 
-                        current != start_tuple) {
-                        current = nodesFromOrigin[current].parent;
-                        path.insert(path.begin(), current);
-                    }
-
-                    current = path[path.size() - 1];
-                
-                    while (nodesFromDestination.find(current) != nodesFromDestination.end()) {
-                        current = nodesFromDestination[current].parent;
-                        reversedPath.insert(reversedPath.begin(), current);
-                    }
-                  
-
-                    std::reverse(reversedPath.begin(), reversedPath.end());
-
-                    std::vector<std::tuple<float, float, float>> fullPath = path;
-                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
-
-                  
-                    return fullPath;
-                }
-
-                
-            }
 
         
         
@@ -1013,6 +1015,18 @@ private:
             publish_created_vertices_from_destination();
 
             std::this_thread::sleep_for(std::chrono::milliseconds(time_between_points));
+
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+                
+                shared_explored.insert(current);
+
+                if(found == true)
+                {
+                    return {};
+                }
+
+            }
             
             if (current != start_tuple && current != goal_tuple)
             {
@@ -1374,17 +1388,7 @@ private:
             }
 
 
-            {
-                std::lock_guard<std::mutex> lock(nodes_from_destination);
-                
-                shared_explored.insert(current);
-
-                if(found == true)
-                {
-                    return {};
-                }
-
-            }
+          
 
 
             if (current == goal_tuple) 

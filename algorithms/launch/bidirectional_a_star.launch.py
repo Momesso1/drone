@@ -11,7 +11,7 @@ from launch.conditions import IfCondition, UnlessCondition
 def generate_launch_description():
     
     parameters = [{
-        "distanceToObstacle": 0.2,
+        "distanceToObstacle": 0.20,
         "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,

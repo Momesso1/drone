@@ -429,6 +429,45 @@ private:
                 
             nodesFromOrigin[current].closed = true;
 
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+                
+                if(shared_explored.find(current) != shared_explored.end() && obstaclesVertices.find(current) == obstaclesVertices.end())
+                {
+                    std::vector<std::tuple<float, float, float>> path;
+                    std::vector<std::tuple<float, float, float>> reversedPath;
+
+                    found = true;
+                       
+                    
+                    path.insert(path.begin(), current);
+                    
+                    while (nodesFromOrigin.find(current) != nodesFromOrigin.end() && 
+                        current != start_tuple) {
+                        current = nodesFromOrigin[current].parent;
+                        path.insert(path.begin(), current);
+                    }
+
+                    current = path[path.size() - 1];
+                
+                    while (nodesFromDestination.find(current) != nodesFromDestination.end()) {
+                        current = nodesFromDestination[current].parent;
+                        reversedPath.insert(reversedPath.begin(), current);
+                    }
+                  
+
+                    std::reverse(reversedPath.begin(), reversedPath.end());
+
+                    std::vector<std::tuple<float, float, float>> fullPath = path;
+                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
+
+                  
+                    return fullPath;
+                }
+
+                
+            }
+
            
             if (current != start_tuple && current != goal_tuple)
             {
@@ -792,46 +831,6 @@ private:
 
             }
                 
-                
-
-            {
-                std::lock_guard<std::mutex> lock(nodes_from_destination);
-                if(shared_explored.find(current) != shared_explored.end())
-                {
-                    std::vector<std::tuple<float, float, float>> path;
-                    std::vector<std::tuple<float, float, float>> reversedPath;
-
-                    found = true;
-                       
-                    
-                    path.insert(path.begin(), current);
-                    
-                    while (nodesFromOrigin.find(current) != nodesFromOrigin.end() && 
-                        current != start_tuple) {
-                        current = nodesFromOrigin[current].parent;
-                        path.insert(path.begin(), current);
-                    }
-
-                    current = path[path.size() - 1];
-                
-                    while (nodesFromDestination.find(current) != nodesFromDestination.end()) {
-                        current = nodesFromDestination[current].parent;
-                        reversedPath.insert(reversedPath.begin(), current);
-                    }
-                  
-
-                    std::reverse(reversedPath.begin(), reversedPath.end());
-
-                    std::vector<std::tuple<float, float, float>> fullPath = path;
-                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
-
-                  
-                    return fullPath;
-                }
-
-                
-            }
-
         
         
             if (current == goal_tuple) 
@@ -867,6 +866,9 @@ private:
                 }
             }
             
+
+           
+
             adjacencyListTuplesFromOrigin.erase(current);
 
         }
@@ -999,6 +1001,9 @@ private:
                 continue;
                 
             nodesFromDestination[current].closed = true;
+            
+
+
             
             if (current != start_tuple && current != goal_tuple)
             {
@@ -1360,18 +1365,7 @@ private:
             }
 
 
-            {
-                std::lock_guard<std::mutex> lock(nodes_from_destination);
-                
-                shared_explored.insert(current);
-
-                if(found == true)
-                {
-                    return {};
-                }
-
-            }
-
+          
 
             if (current == goal_tuple) 
             {
@@ -1405,6 +1399,22 @@ private:
                     nodesFromDestination[neighbor].f_score = tentative_g_score + heuristic(neighbor, goal_tuple);
                     open_set.push({nodesFromDestination[neighbor].f_score, neighbor});
                 }
+            }
+
+
+            {
+                std::lock_guard<std::mutex> lock(nodes_from_destination);
+
+                
+                shared_explored.insert(current);
+                
+                
+                if(found == true)
+                    {
+                        return {};
+                    }
+    
+               
             }
             
             adjacencyListTuplesFromDestination.erase(current);
@@ -1617,7 +1627,7 @@ private:
             }
 
             
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         });
 
         std::thread destination_thread([this, &start_barrier, &end_barrier, &start, &end]() 
@@ -1637,7 +1647,7 @@ private:
                 adjacencyListTuplesFromDestination.clear();
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         });
 
         origin_thread.join();
@@ -1764,8 +1774,10 @@ private:
                 roundToMultiple(z, distanceToObstacle_, decimals)
             );
 
-            obstaclesVertices.insert(index);
-            
+            if(obstaclesVertices.find(index) == obstaclesVertices.end())
+            {
+                obstaclesVertices.insert(index);
+            }
         }
        
         
