@@ -45,6 +45,8 @@ ament_target_dependencies(a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversio
 add_executable(a_star_with_filter src/a_star_with_filter.cpp)
 ament_target_dependencies(a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
+add_executable(dynamic_a_star src/dynamic_a_star.cpp)
+ament_target_dependencies(dynamic_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 add_executable(bidirectional_a_star src/bidirectional_a_star.cpp)
 ament_target_dependencies(bidirectional_a_star rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
@@ -109,6 +111,13 @@ target_link_libraries(a_star_with_filter
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(dynamic_a_star
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
 target_link_libraries(bidirectional_a_star
   ${rclcpp_LIBRARIES}
   ${std_msgs_LIBRARIES}
@@ -141,6 +150,7 @@ install(TARGETS
   send_poses
   a_star
   a_star_with_filter
+  dynamic_a_star
   bidirectional_a_star
   bidirectional_a_star_with_filter
   controller
