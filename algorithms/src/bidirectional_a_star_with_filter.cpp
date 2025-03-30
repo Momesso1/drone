@@ -478,32 +478,35 @@ private:
                         std::lock_guard<std::mutex> lock(path_data_mutex);
     
 
-                        float xDistance = roundToMultiple(std::get<0>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<0>(fullPath[1]), distanceToObstacle_, decimals);
-                        float yDistance = roundToMultiple(std::get<1>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<1>(fullPath[1]), distanceToObstacle_, decimals);
-                        float zDistance = roundToMultiple(std::get<2>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<2>(fullPath[1]), distanceToObstacle_, decimals);
-                        int contador = 0;
-
-                        if(xDistance > 0.00001)
+                        if(!fullPath.size() > 1)
                         {
-                            contador++;
-                        }
+                            float xDistance = roundToMultiple(std::get<0>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<0>(fullPath[1]), distanceToObstacle_, decimals);
+                            float yDistance = roundToMultiple(std::get<1>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<1>(fullPath[1]), distanceToObstacle_, decimals);
+                            float zDistance = roundToMultiple(std::get<2>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<2>(fullPath[1]), distanceToObstacle_, decimals);
+                            int contador = 0;
 
-                        if(yDistance > 0.00001)
-                        {
-                            contador++;
-                        }
-
-
-                        if(zDistance > 0.00001)
-                        {
-                            contador++;
-                        }
-
-                        if(contador == 1)
-                        {
-                            if(xDistance >= distanceToObstacle_ * 2 || yDistance >= distanceToObstacle_ * 2 || zDistance >= distanceToObstacle_ * 2)
+                            if(xDistance > 0.00001)
                             {
-                                return {};
+                                contador++;
+                            }
+
+                            if(yDistance > 0.00001)
+                            {
+                                contador++;
+                            }
+
+
+                            if(zDistance > 0.00001)
+                            {
+                                contador++;
+                            }
+
+                            if(contador == 1)
+                            {
+                                if(xDistance >= distanceToObstacle_ * 2 || yDistance >= distanceToObstacle_ * 2 || zDistance >= distanceToObstacle_ * 2)
+                                {
+                                    return {};
+                                }
                             }
                         }
 
