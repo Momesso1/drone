@@ -472,11 +472,43 @@ private:
                      
                     bool wrongPath = false;
 
-                 
+                    
 
                     {
                         std::lock_guard<std::mutex> lock(path_data_mutex);
     
+
+                        float xDistance = roundToMultiple(std::get<0>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<0>(fullPath[1]), distanceToObstacle_, decimals);
+                        float yDistance = roundToMultiple(std::get<1>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<1>(fullPath[1]), distanceToObstacle_, decimals);
+                        float zDistance = roundToMultiple(std::get<2>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<2>(fullPath[1]), distanceToObstacle_, decimals);
+                        int contador = 0;
+
+                        if(xDistance > 0.00001)
+                        {
+                            contador++;
+                        }
+
+                        if(yDistance > 0.00001)
+                        {
+                            contador++;
+                        }
+
+
+                        if(zDistance > 0.00001)
+                        {
+                            contador++;
+                        }
+
+                        if(contador == 1)
+                        {
+                            if(xDistance >= distanceToObstacle_ * 2 || yDistance >= distanceToObstacle_ * 2 || zDistance >= distanceToObstacle_ * 2)
+                            {
+                                return {};
+                            }
+                        }
+
+
+
                         for (int i = 1; i < fullPath.size() - 2; i++) 
                         {
                             std::tuple<float, float, float> A {
@@ -546,8 +578,19 @@ private:
                     }
 
 
+                    tamanho = fullPath.size();
+
+
                     if(wrongPath == false)
                     {
+
+                        if(tamanho > fullPath.size() + 5)
+                        {
+                            for(const auto& it : fullPath)
+                            {
+                                std::cout << it << std::endl;
+                            }
+                        }
                         found = true;
                         return fullPath;
                     }
