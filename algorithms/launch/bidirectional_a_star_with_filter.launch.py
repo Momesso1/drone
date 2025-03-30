@@ -15,6 +15,8 @@ def generate_launch_description():
         "diagonalEdges": 3,
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
+        "maximumHeight": 2.0,
+        "minimumHeight": -2.0
     }]
 
   

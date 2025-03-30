@@ -173,7 +173,7 @@ private:
     size_t i_ = 0; 
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
+    float distanceToObstacle_, maximumHeight, minimumHeight;
    
     int decimals = 0;
 
@@ -328,7 +328,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                 { 
                     adjacencyListTuplesFromOrigin[start_tuple].push_back(neighbor_tuple);
                     findNavigableVertice = true;
@@ -362,7 +362,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                 { 
                     adjacencyListTuplesFromOrigin[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
@@ -608,7 +608,7 @@ private:
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
                     
-                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                     {
                         adjacencyListTuplesFromOrigin[current].push_back(neighbor_tuple);
                     }
@@ -1029,7 +1029,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                 { 
                     adjacencyListTuplesFromDestination[start_tuple].push_back(neighbor_tuple);
                     findNavigableVertice = true;
@@ -1044,7 +1044,7 @@ private:
         
         if(findNavigableVertice == false) 
         {
-            RCLCPP_WARN(this->get_logger(), "The robot is too far of the navigable area.");
+            RCLCPP_WARN(this->get_logger(), "Destination is too far of the navigable area. Increase navigable area.");
             return {};
         }
         
@@ -1063,7 +1063,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                 { 
                     adjacencyListTuplesFromDestination[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
@@ -1078,7 +1078,7 @@ private:
         
         if(findNavigableGoalVertice == false)
         {
-            RCLCPP_WARN(this->get_logger(), "Destination is too far of the navigable area. Increase navigable area.");
+            RCLCPP_WARN(this->get_logger(), "The robot is too far of the navigable area.");
             return {};
         }
         
@@ -1154,7 +1154,7 @@ private:
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
                     
-                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                     {
                         adjacencyListTuplesFromDestination[current].push_back(neighbor_tuple);
                     }
@@ -1828,15 +1828,15 @@ private:
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-   
+        auto new_minimumHeight = this->get_parameter("minimumHeight").get_parameter_value().get<double>();
+        auto new_maximumHeight = this->get_parameter("maximumHeight").get_parameter_value().get<double>();
         
         
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
             std::cout << "\n" << std::endl;
-            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
-            RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          
+            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle to: %.2f", distanceToObstacle_);
         }
 
         if(new_diagonalEdges != diagonalEdges_)
@@ -1845,13 +1845,29 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
+            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges to: %d", diagonalEdges_);
+        }
+
+        if(new_minimumHeight != minimumHeight)
+        {
+            minimumHeight = new_minimumHeight;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "Updated minimummHeight to: %f", minimumHeight);
         }
        
+        if(new_maximumHeight != maximumHeight)
+        {
+            maximumHeight = new_maximumHeight;
 
+            std::cout << "\n" << std::endl;
 
-      
+            RCLCPP_INFO(this->get_logger(), "Updated maximumHeight to: %f", maximumHeight);
+        }
+        
     }
+
 
 
     
@@ -1861,19 +1877,26 @@ public:
     BidirectionalAStar() 
     : rclcpp::Node("bidirectional_a_star")
     {
-    
-     
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
+        this->declare_parameter<double>("minimumHeight", -100);
+        this->declare_parameter<double>("maximumHeight", 100);
 
 
-        // Initialize parameters 
+
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
+        minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
+        maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
 
 
-        RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "minimumHeight is set to: %f", minimumHeight);
+        RCLCPP_INFO(this->get_logger(), "maximumHeight is set to: %f", maximumHeight);
+
+
+
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
