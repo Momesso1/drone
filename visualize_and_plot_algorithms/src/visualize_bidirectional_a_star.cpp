@@ -176,7 +176,7 @@ private:
     bool found = false, activate_only_with_obstacles = false;
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
+    float distanceToObstacle_, minimumHeight, maximumHeight;
     int decimals = 0, time_between_points = 1;
 
     std::thread thread_from_origin;
@@ -910,7 +910,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                 { 
                     adjacencyListTuplesFromDestination[start_tuple].push_back(neighbor_tuple);
                     findNavigableVertice = true;
@@ -944,7 +944,7 @@ private:
                     static_cast<float>(new_y), 
                     static_cast<float>(new_z));
                 
-                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight) 
                 { 
                     adjacencyListTuplesFromDestination[neighbor_tuple].push_back(goal_tuple);
                     findNavigableGoalVertice = true;
@@ -1040,7 +1040,7 @@ private:
                         static_cast<float>(new_y), 
                         static_cast<float>(new_z));
                     
-                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end())
+                    if (obstaclesVertices.find(neighbor_tuple) == obstaclesVertices.end() && new_z >= minimumHeight  && new_z <= maximumHeight)
                     {
                         adjacencyListTuplesFromDestination[current].push_back(neighbor_tuple);
                     }
@@ -1825,6 +1825,8 @@ private:
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         auto new_time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
         auto new_activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
+        auto new_minimumHeight = this->get_parameter("minimumHeight").get_parameter_value().get<double>();
+        auto new_maximumHeight = this->get_parameter("maximumHeight").get_parameter_value().get<double>();
         
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
@@ -1854,6 +1856,24 @@ private:
             RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles set to: %s", activate_only_with_obstacles ? "true" : "false");
         }
 
+        if(new_minimumHeight != minimumHeight)
+        {
+            minimumHeight = new_minimumHeight;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "minimummHeight set to: %f", minimumHeight);
+        }
+       
+        if(new_maximumHeight != maximumHeight)
+        {
+            maximumHeight = new_maximumHeight;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "maximumHeight set to: %f", maximumHeight);
+        }
+
       
     }
 
@@ -1866,18 +1886,23 @@ public:
         this->declare_parameter<int>("diagonalEdges", 3);
         this->declare_parameter<int>("time_between_points", 1);
         this->declare_parameter<bool>("activate_only_with_obstacles", false);
+        this->declare_parameter<double>("minimumHeight", -100);
+        this->declare_parameter<double>("maximumHeight", 100);
 
-        
+       
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
         activate_only_with_obstacles = this->get_parameter("activate_only_with_obstacles").get_parameter_value().get<bool>();
-
+        minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
+        maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
 
         RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
         RCLCPP_INFO(this->get_logger(), "time_between_points is set to: %d ms", time_between_points);
         RCLCPP_INFO(this->get_logger(), "activate_only_with_obstacles is set to: %s", activate_only_with_obstacles ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(), "minimumHeight is set to: %f", minimumHeight);
+        RCLCPP_INFO(this->get_logger(), "maximumHeight is set to: %f", maximumHeight);
 
 
 

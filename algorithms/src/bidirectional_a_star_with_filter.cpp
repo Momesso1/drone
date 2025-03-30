@@ -1948,7 +1948,7 @@ private:
         {
             distanceToObstacle_ = new_distanceToObstacle;
             std::cout << "\n" << std::endl;
-            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle to: %.2f", distanceToObstacle_);
+            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %.2f", distanceToObstacle_);
         }
 
         if(new_diagonalEdges != diagonalEdges_)
@@ -1957,7 +1957,7 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges to: %d", diagonalEdges_);
+            RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
         }
 
         if(new_minimumHeight != minimumHeight)
@@ -1966,7 +1966,7 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "Updated minimummHeight to: %f", minimumHeight);
+            RCLCPP_INFO(this->get_logger(), "minimummHeight set to: %f", minimumHeight);
         }
        
         if(new_maximumHeight != maximumHeight)
@@ -1975,10 +1975,11 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "Updated maximumHeight to: %f", maximumHeight);
+            RCLCPP_INFO(this->get_logger(), "maximumHeight set to: %f", maximumHeight);
         }
         
     }
+    
 
     
     

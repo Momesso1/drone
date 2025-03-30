@@ -16,7 +16,9 @@ def generate_launch_description():
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
         "time_between_points": 1, # In ms.
-        "activate_only_with_obstacles": True
+        "activate_only_with_obstacles": True,
+        "maximumHeight": 2.0,
+        "minimumHeight": -2.0
     }]
 
   

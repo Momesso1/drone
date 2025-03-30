@@ -16,7 +16,9 @@ def generate_launch_description():
         "maxSecurityDistance": 0.20,
         "maxSecurityHeightDistance": 0.20,
         "time_between_points": 10, # In ms.
-        "activate_only_with_obstacles": True
+        "activate_only_with_obstacles": True,
+        "maximumHeight": 2.0,
+        "minimumHeight": -2.0
     }]
 
     rviz_config_file = os.path.join(get_package_share_directory('visualize_and_plot_algorithms'), 'rviz', 'visualize_bidirectional_a_star.rviz')
