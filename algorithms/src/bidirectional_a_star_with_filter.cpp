@@ -477,7 +477,7 @@ private:
                     {
                         std::lock_guard<std::mutex> lock(path_data_mutex);
     
-                        for (int i = 0; i < fullPath.size() - 2; i++) 
+                        for (int i = 1; i < fullPath.size() - 2; i++) 
                         {
                             std::tuple<float, float, float> A {
                                 std::get<0>(fullPath[i]),
