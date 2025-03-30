@@ -356,7 +356,7 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             distanceToObstacle_ = new_distanceToObstacle;
-            RCLCPP_INFO(this->get_logger(), "Updated distanceToObstacle: %f", distanceToObstacle_);
+            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %f", distanceToObstacle_);
         }
 
         if(new_maxSecurityDistance != maxSecurityDistance_)
@@ -364,7 +364,7 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             maxSecurityDistance_ = new_maxSecurityDistance;
-            RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance: %f", maxSecurityDistance_);
+            RCLCPP_INFO(this->get_logger(), "maxSecurityDistance set to: %f", maxSecurityDistance_);
         }
 
         if(new_maxSecurityHeightDistance != maxSecurityHeightDistance_)
@@ -372,7 +372,7 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             maxSecurityHeightDistance_ = new_maxSecurityHeightDistance;
-            RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %f", maxSecurityHeightDistance_);
+            RCLCPP_INFO(this->get_logger(), "maxSecurityHeightDistance set to: %f", maxSecurityHeightDistance_);
         }
   
 
@@ -394,9 +394,9 @@ public:
         maxSecurityHeightDistance_ = static_cast<float>(this->get_parameter("maxSecurityHeightDistance").get_parameter_value().get<double>());
        
 
-        RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %2f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance %2f", maxSecurityDistance_);
-        RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance: %2f", maxSecurityHeightDistance_);
+        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %2f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "maxSecurityDistance is set to: %2f", maxSecurityDistance_);
+        RCLCPP_INFO(this->get_logger(), "maxSecurityHeightDistance is set to: %2f", maxSecurityHeightDistance_);
 
        
 

@@ -429,7 +429,7 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             distanceToObstacle_ = new_distanceToObstacle;
-            RCLCPP_INFO(this->get_logger(), "Updated distanceToObstacle to: %f", distanceToObstacle_);
+            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %f", distanceToObstacle_);
         }
 
         if(new_maxSecurityDistance != maxSecurityDistance_)
@@ -437,7 +437,7 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             maxSecurityDistance_ = new_maxSecurityDistance;
-            RCLCPP_INFO(this->get_logger(), "Updated maxSecurityDistance to: %f", maxSecurityDistance_);
+            RCLCPP_INFO(this->get_logger(), "maxSecurityDistance set to: %f", maxSecurityDistance_);
         }
 
         if(new_maxSecurityHeightDistance != maxSecurityHeightDistance_)
@@ -445,13 +445,13 @@ private:
             verticesCloudMap.clear();
             verticesArbitrary.clear();
             maxSecurityHeightDistance_ = new_maxSecurityHeightDistance;
-            RCLCPP_INFO(this->get_logger(), "Updated maxSecurityHeightDistance to: %f", maxSecurityHeightDistance_);
+            RCLCPP_INFO(this->get_logger(), "maxSecurityHeightDistance set to: %f", maxSecurityHeightDistance_);
         }
         
         if(new_time_between_points != time_between_points)
         {
             time_between_points = new_time_between_points;
-            RCLCPP_INFO(this->get_logger(), "Updated time_between_points to: %d ms", time_between_points);
+            RCLCPP_INFO(this->get_logger(), "time_between_points set to: %d ms", time_between_points);
         }
 
     }
@@ -473,10 +473,10 @@ public:
         time_between_points = this->get_parameter("time_between_points").get_parameter_value().get<int>();
 
 
-        RCLCPP_INFO(this->get_logger(), "distanceToObstacle: %2f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "maxSecurityDistance %2f", maxSecurityDistance_);
-        RCLCPP_INFO(this->get_logger(), "maxSecurityHeightDistance: %2f", maxSecurityHeightDistance_);
-        RCLCPP_INFO(this->get_logger(), "time_between_points: %d ms", time_between_points);
+        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %2f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "maxSecurityDistance is set to: %2f", maxSecurityDistance_);
+        RCLCPP_INFO(this->get_logger(), "maxSecurityHeightDistance is set to: %2f", maxSecurityHeightDistance_);
+        RCLCPP_INFO(this->get_logger(), "time_between_points is set to: %d ms", time_between_points);
 
        
 

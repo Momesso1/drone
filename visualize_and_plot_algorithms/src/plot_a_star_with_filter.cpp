@@ -1156,8 +1156,7 @@ private:
         {
             distanceToObstacle_ = new_distanceToObstacle;
             std::cout << "\n" << std::endl;
-            RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %.2f", distanceToObstacle_);
-            RCLCPP_INFO(this->get_logger(), "Resolution set to 1.");          
+            RCLCPP_INFO(this->get_logger(), "distanceToObstacle set to: %.2f", distanceToObstacle_);
         }
 
         if(new_diagonalEdges != diagonalEdges_)
@@ -1166,12 +1165,9 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
+            RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
         }
        
-        
-
-      
     }
     
    
@@ -1179,8 +1175,6 @@ public:
     AStar()
      : Node("a_star")
     {
-    
-     
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
 
@@ -1190,8 +1184,8 @@ public:
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
 
 
-        RCLCPP_INFO(this->get_logger(), "Updated DistanceToObstacle: %f", distanceToObstacle_);
-        RCLCPP_INFO(this->get_logger(), "Updated diagonalEdges: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
+        RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
