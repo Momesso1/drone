@@ -432,12 +432,14 @@ private:
 
             {
                 std::lock_guard<std::mutex> lock(nodes_from_destination);
+                
                 if(shared_explored.find(current) != shared_explored.end() && obstaclesVertices.find(current) == obstaclesVertices.end())
                 {
+                    
                     std::vector<std::tuple<float, float, float>> path;
                     std::vector<std::tuple<float, float, float>> reversedPath;
 
-                    found = true;
+                    
                        
                     
                     path.insert(path.begin(), current);
@@ -459,12 +461,104 @@ private:
                     std::reverse(reversedPath.begin(), reversedPath.end());
 
                     std::vector<std::tuple<float, float, float>> fullPath = path;
-                    fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1 ); 
+                    if (reversedPath.size() > 1) 
+                    {
+                        fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end() - 1);
+                    } 
+                    else if (!reversedPath.empty()) 
+                    {
+                        fullPath.insert(fullPath.end(), reversedPath.begin(), reversedPath.end());
+                    }
+                     
+                    bool wrongPath = false;
 
+                 
+
+                    {
+                        std::lock_guard<std::mutex> lock(path_data_mutex);
+    
+                        for (int i = 0; i < fullPath.size() - 2; i++) 
+                        {
+                            std::tuple<float, float, float> A {
+                                std::get<0>(fullPath[i]),
+                                std::get<1>(fullPath[i]),
+                                std::get<2>(fullPath[i])
+                            };
+                            std::tuple<float, float, float> B {
+                                std::get<0>(fullPath[i + 1]),
+                                std::get<1>(fullPath[i + 1]),
+                                std::get<2>(fullPath[i + 1])
+                            };
+                    
+                            float ax = std::get<0>(A), ay = std::get<1>(A), az = std::get<2>(A);
+                            float bx = std::get<0>(B), by = std::get<1>(B), bz = std::get<2>(B);
+                    
+                            float dx = bx - ax, dy = by - ay, dz = bz - az;
+                            float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    
+                            if (distance == 0) 
+                            {
+                                continue;
+                            }
+                    
+                            float ux = dx / distance;
+                            float uy = dy / distance;
+                            float uz = dz / distance;
+                    
+                            float step = distanceToObstacle_;
+                            float t = 0.0f;
+                            bool obstacleFound = false;
+                            auto offsets1 = getOffsets(distanceToObstacle_);
+                    
+                            while (t < distance && obstacleFound == false) 
+                            {
+                                std::tuple<float, float, float> point;
+                                std::get<0>(point) = ax + t * ux;
+                                std::get<1>(point) = ay + t * uy;
+                                std::get<2>(point) = az + t * uz;
+                    
+                                double new_x = roundToMultiple(std::get<0>(point), distanceToObstacle_, decimals);
+                                double new_y = roundToMultiple(std::get<1>(point), distanceToObstacle_, decimals);
+                                double new_z = roundToMultiple(std::get<2>(point), distanceToObstacle_, decimals);
+                    
+                                auto neighbor_tuple = std::make_tuple(
+                                    static_cast<float>(new_x), 
+                                    static_cast<float>(new_y), 
+                                    static_cast<float>(new_z)
+                                );
+                                
+                                if (obstaclesVertices.find(neighbor_tuple) != obstaclesVertices.end()) 
+                                {
+                                    obstacleFound = true;
+                                    break;
+                                }
+            
+                                t += step;
+                            }
+                    
+                            if (obstacleFound == true) 
+                            {
+                                wrongPath = true;
+
+                                break;  
+                            }
+                        }                     
+                    }
+
+
+                    if(wrongPath == false)
+                    {
+                        found = true;
+                        return fullPath;
+                    }
+                    else
+                    {
+                        return {};
+                    }
                   
-                    return fullPath;
-                }
 
+                
+                }
                 
             }
 

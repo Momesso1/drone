@@ -1158,15 +1158,15 @@ private:
             }
             else if(found == true) 
             {
-                finalPath.clear(); // Ensure we start with an empty  finalPath
+                finalPath.clear(); 
                 
-                // Add initial segment from start to first obstacle
-                for(int i = 0; i <= intervals[0]; i++) {
+                for(int i = 0; i <= intervals[0]; i++) 
+                {
                     finalPath.push_back(previousPath[i]);
                 }
                 
-                // Process each segment with obstacles
-                for(int k = 0; k < pairs.size(); k++) {
+                for(int k = 0; k < pairs.size(); k++)
+                {
                     const auto& pair = pairs[k];
                     
                     float array_inicial[3] = {
@@ -1181,45 +1181,50 @@ private:
                         std::get<2>(pair.second)
                     };
                     
-                    // Get new  finalPath segment around obstacle
                     std::vector<std::tuple<float, float, float>> shortestPath = runAStar(array_inicial, array_final);
                     
                     int startIdx =  (finalPath.empty() ||  finalPath.back() != shortestPath[0]) ? 0 : 1;
-                    // Skip first point if it's already in our  finalPath (would be the same as the last point we added)
                     
-                    // Add the new  finalPath segment (excluding the last point which will be handled in the next section)
-                    for(int i = startIdx; i < shortestPath.size() - 1; i++) {
+                    for(int i = startIdx; i < shortestPath.size() - 1; i++) 
+                    {
                         finalPath.push_back(shortestPath[i]);
                     }
                     
-                    // If this isn't the last segment, add  finalPath from current destination to next obstacle
                     int nextStart = -1;
-                    if(k < pairs.size() - 1) {
-                        // Find index of destination in previousPath
-                        for(int i = 0; i < previousPath.size(); i++) {
-                            if(previousPath[i] == pair.second) {
+                    if(k < pairs.size() - 1) 
+                    {
+                        for(int i = 0; i < previousPath.size(); i++) 
+                        {
+                            if(previousPath[i] == pair.second) 
+                            {
                                 nextStart = i;
                                 break;
                             }
                         }
                         
-                        // Add points up to the next obstacle
-                        if(nextStart >= 0) {
-                            for(int i = nextStart; i <= intervals[k+1]; i++) {
+                        if(nextStart >= 0) 
+                        {
+                            for(int i = nextStart; i <= intervals[k+1]; i++) 
+                            {
                                 finalPath.push_back(previousPath[i]);
                             }
                         }
-                    } else {
-                        // For the last segment, add remaining points from destination to goal
-                        for(int i = 0; i < previousPath.size(); i++) {
-                            if(previousPath[i] == pair.second) {
+                    } 
+                    else 
+                    {
+                        for(int i = 0; i < previousPath.size(); i++) 
+                        {
+                            if(previousPath[i] == pair.second) 
+                            {
                                 nextStart = i;
                                 break;
                             }
                         }
                         
-                        if(nextStart >= 0) {
-                            for(int i = nextStart; i < previousPath.size(); i++) {
+                        if(nextStart >= 0) 
+                        {
+                            for(int i = nextStart; i < previousPath.size(); i++) 
+                            {
                                 finalPath.push_back(previousPath[i]);
                             }
                         }
