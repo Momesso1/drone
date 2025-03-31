@@ -200,9 +200,7 @@ private:
     std::vector<std::tuple<float, float, float>> destinationEdges;
     std::vector<VertexDijkstra> verticesDestino_;
     std::vector<VertexDijkstra> verticesDijkstra;
-    std::vector<Edge> shortestPathEdges;
-    int tamanho = 0;
-    
+    std::vector<Edge> shortestPathEdges;    
 
     std::unordered_map<std::tuple<float, float, float>, Node> nodesFromOrigin;
     std::unordered_map<std::tuple<float, float, float>, Node> nodesFromDestination;
@@ -474,7 +472,7 @@ private:
                         std::lock_guard<std::mutex> lock(path_data_mutex);
     
 
-                        if(!fullPath.size() > 1)
+                        if(fullPath.size() > 1)
                         {
                             float xDistance = roundToMultiple(std::get<0>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<0>(fullPath[1]), distanceToObstacle_, decimals);
                             float yDistance = roundToMultiple(std::get<1>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<1>(fullPath[1]), distanceToObstacle_, decimals);
@@ -507,8 +505,9 @@ private:
                         }
 
 
+                        int n = static_cast<int>(fullPath.size());
 
-                        for (int i = 1; i < fullPath.size() - 2; i++) 
+                        for (int i = 1; i < n - 2; i++) 
                         {
                             std::tuple<float, float, float> A {
                                 std::get<0>(fullPath[i]),
@@ -577,19 +576,12 @@ private:
                     }
 
 
-                    tamanho = fullPath.size();
 
 
                     if(wrongPath == false)
                     {
 
-                        if(tamanho > fullPath.size() + 5)
-                        {
-                            for(const auto& it : fullPath)
-                            {
-                                std::cout << it << std::endl;
-                            }
-                        }
+                    
                         found = true;
                         return fullPath;
                     }

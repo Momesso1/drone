@@ -267,7 +267,6 @@ private:
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
     float distanceToObstacle_;
-    float z_min_;
  
     int decimals = 0;
 
@@ -622,7 +621,6 @@ private:
 
             std::vector<std::tuple<float, float, float>> result;
             
-            bool found = loadDataFromBinaryFile(filename, key, result);        
             // Verificar o resultado
             if (!result.empty()) 
             {

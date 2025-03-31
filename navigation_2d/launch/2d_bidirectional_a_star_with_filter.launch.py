@@ -28,7 +28,7 @@ def generate_launch_description():
 
         Node(
             package='navigation_2d',
-            executable='2d_a_star_with_filter',
+            executable='2d_bidirectional_a_star_with_filter',
             output='screen',
             parameters=parameters,
         ),

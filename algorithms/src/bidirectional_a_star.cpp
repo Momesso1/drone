@@ -477,7 +477,7 @@ private:
                     {
                         std::lock_guard<std::mutex> lock(path_data_mutex);
 
-                        if(!fullPath.size() > 1)
+                        if(fullPath.size() > 1)
                         {
                             float xDistance = roundToMultiple(std::get<0>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<0>(fullPath[1]), distanceToObstacle_, decimals);
                             float yDistance = roundToMultiple(std::get<1>(fullPath[0]), distanceToObstacle_, decimals) - roundToMultiple(std::get<1>(fullPath[1]), distanceToObstacle_, decimals);
@@ -509,8 +509,9 @@ private:
                             }
                         }
                         
-    
-                        for (int i = 1; i < fullPath.size() - 2; i++) 
+                        int n = static_cast<int>(fullPath.size());
+
+                        for (int i = 1; i < n - 2; i++) 
                         {
                             std::tuple<float, float, float> A {
                                 std::get<0>(fullPath[i]),

@@ -27,8 +27,18 @@ find_library(XXHASH_LIBRARY xxhash REQUIRED)
 add_executable(2d_a_star_with_filter src/2d_a_star_with_filter.cpp)
 ament_target_dependencies(2d_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
+add_executable(2d_bidirectional_a_star_with_filter src/2d_bidirectional_a_star_with_filter.cpp)
+ament_target_dependencies(2d_bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
 
 target_link_libraries(2d_a_star_with_filter
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+target_link_libraries(2d_bidirectional_a_star_with_filter
   ${rclcpp_LIBRARIES}
   ${std_msgs_LIBRARIES}
   ${GLEW_LIBRARIES}
@@ -45,7 +55,7 @@ DESTINATION share/${PROJECT_NAME}
 
 install(TARGETS
   2d_a_star_with_filter
-
+  2d_bidirectional_a_star_with_filter
   DESTINATION lib/${PROJECT_NAME}
 )
 

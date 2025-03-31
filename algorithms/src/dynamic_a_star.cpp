@@ -1077,9 +1077,6 @@ private:
             std::tuple<float, float, float> origin = std::make_tuple(0.0, 0.0, 0.0);
             std::tuple<float, float, float> destination = std::make_tuple(0.0, 0.0, 0.0);
             intervals.clear();
-
-            int j = 0;
-            bool nearObstacle = false;
               
             auto offsets1 = getOffsets(distanceToObstacle_);
         
@@ -1110,7 +1107,7 @@ private:
             if(!previousPath.empty())
             {
                 previousPath[0] = start_tuple;
-                for(int m = 1; m < previousPath.size() - 1; m++)
+                for(size_t m = 1; m < previousPath.size() - 1; m++)
                 {
                     // std::cout << previousPath[m] << std::endl;
 
@@ -1141,7 +1138,6 @@ private:
 
                 if(found == false)
                 {
-                    previousPath = previousPath;
                     storeEdgesInPath(previousPath);
                 }
             }
@@ -1165,7 +1161,7 @@ private:
                     finalPath.push_back(previousPath[i]);
                 }
                 
-                for(int k = 0; k < pairs.size(); k++)
+                for(size_t k = 0; k < pairs.size(); k++)
                 {
                     const auto& pair = pairs[k];
                     
@@ -1185,7 +1181,7 @@ private:
                     
                     int startIdx =  (finalPath.empty() ||  finalPath.back() != shortestPath[0]) ? 0 : 1;
                     
-                    for(int i = startIdx; i < shortestPath.size() - 1; i++) 
+                    for(size_t i = startIdx; i < shortestPath.size() - 1; i++) 
                     {
                         finalPath.push_back(shortestPath[i]);
                     }
@@ -1193,7 +1189,7 @@ private:
                     int nextStart = -1;
                     if(k < pairs.size() - 1) 
                     {
-                        for(int i = 0; i < previousPath.size(); i++) 
+                        for(size_t i = 0; i < previousPath.size(); i++) 
                         {
                             if(previousPath[i] == pair.second) 
                             {
@@ -1212,7 +1208,7 @@ private:
                     } 
                     else 
                     {
-                        for(int i = 0; i < previousPath.size(); i++) 
+                        for(size_t i = 0; i < previousPath.size(); i++) 
                         {
                             if(previousPath[i] == pair.second) 
                             {
@@ -1223,7 +1219,7 @@ private:
                         
                         if(nextStart >= 0) 
                         {
-                            for(int i = nextStart; i < previousPath.size(); i++) 
+                            for(size_t i = nextStart; i < previousPath.size(); i++) 
                             {
                                 finalPath.push_back(previousPath[i]);
                             }
@@ -1236,10 +1232,10 @@ private:
             }
             
 
-            for(const auto& path : previousPath)
-            {
-                std::cout << path << std::endl;
-            }
+            // for(const auto& path : previousPath)
+            // {
+            //     std::cout << path << std::endl;
+            // }
 
         
           

@@ -95,16 +95,13 @@ private:
  
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_vertices_arbitrary;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher121_;
-    size_t count_;
 
     float poseX_ = 0.0;
     float poseY_ = 0.0;
     float poseZ_ = 0.0;
-    float fixedNavigableVertices_;
     float maxSecurityDistance_;
     float distanceToObstacle_;
     float maxSecurityHeightDistance_;
-    bool fixedFrames_;
     int decimals = 0;
 
     std::unordered_map<std::tuple<float, float, float>, geometry_msgs::msg::Point> verticesArbitrary;
@@ -445,7 +442,7 @@ private:
 
 public:
     GraphPublisher()
-    : Node("graph_publisher"), count_(0)
+    : Node("graph_publisher")
     {   
        
         this->declare_parameter<double>("distanceToObstacle", 0.05);
