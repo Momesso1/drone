@@ -114,11 +114,9 @@ Visualization Manager:
                 simple_drone/camera_link_optical1:
                   {}
               simple_drone/camera_link2:
-                simple_drone/camera_link_optical2:
-                  {}
+                {}
               simple_drone/camera_link3:
-                simple_drone/camera_link_optical3:
-                  {}
+                {}
               simple_drone/camera_link4:
                 simple_drone/camera_link_optical4:
                   {}
@@ -209,7 +207,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 4
-      Size (m): 0.20000000298023224
+      Size (m): 0.05000000074505806
       Style: Squares
       Topic:
         Depth: 5
@@ -254,6 +252,27 @@ Visualization Manager:
         Value: /rtabmap/cloud_map
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Alpha: 0.699999988079071
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /occupancy_grid_map
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /occupancy_grid_map_updates
+      Use Timestamp: false
       Value: true
   Enabled: true
   Global Options:
@@ -301,25 +320,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 27.233034133911133
+      Distance: 22.61823081970215
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.7457531690597534
-        Y: -6.562814712524414
-        Z: 2.269101858139038
+        X: 4.642961025238037
+        Y: 1.0988274812698364
+        Z: 0.6076214909553528
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.09979867190122604
+      Pitch: 0.32979685068130493
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 1.5505403280258179
+      Yaw: 4.70369815826416
     Saved: ~
 Window Geometry:
   Displays:

@@ -1822,14 +1822,13 @@ private:
     }
 
 
-   
     void check_parameters()
     {
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-        auto new_minimumHeight = this->get_parameter("minimumHeight").get_parameter_value().get<double>();
-        auto new_maximumHeight = this->get_parameter("maximumHeight").get_parameter_value().get<double>();
+        auto new_minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
+        auto new_maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
         
         
         if (new_distanceToObstacle != distanceToObstacle_) 
@@ -1854,7 +1853,7 @@ private:
 
             std::cout << "\n" << std::endl;
 
-            RCLCPP_INFO(this->get_logger(), "minimummHeight set to: %f", minimumHeight);
+            RCLCPP_INFO(this->get_logger(), "minimumHeight set to: %f", minimumHeight);
         }
        
         if(new_maximumHeight != maximumHeight)

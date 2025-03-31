@@ -13,8 +13,9 @@ def generate_launch_description():
     parameters = [{
         "distanceToObstacle": 0.05,
         "diagonalEdges": 3,
-        "maxSecurityDistance": 0.20,
-        "maxSecurityHeightDistance": 0.0,
+        "maxSecurityDistance": 0.15,
+        "maximumHeight": 0.2,
+        "minimumHeight": 0.02,
     }]
 
   

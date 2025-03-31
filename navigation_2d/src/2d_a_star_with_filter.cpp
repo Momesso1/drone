@@ -174,7 +174,7 @@ private:
     size_t i_ = 0; 
     int diagonalEdges_;
     float pose_x_ = 0.0, pose_y_ = 0.0, pose_z_ = 0.0;
-    float distanceToObstacle_;
+    float distanceToObstacle_, minimumHeight, maximumHeight;
     float resolution_;
     unsigned int width_;
     unsigned int height_;
@@ -1106,7 +1106,7 @@ private:
             float y = *iter_y;
             float z = *iter_z;
 
-            if(z > 0.01 && z <= 0.4)
+            if(z > minimumHeight && z <= maximumHeight)
             {
                 z = 0;
 
@@ -1139,8 +1139,8 @@ private:
         grid_msg.header.frame_id = "map";
 
         geometry_msgs::msg::Pose origin_;
-        origin_.position.x = 0.0;
-        origin_.position.y = 0.0;
+        origin_.position.x = roundToMultiple(-20.0, distanceToObstacle_, decimals);
+        origin_.position.y = roundToMultiple(-20.0, distanceToObstacle_, decimals);
         origin_.position.z = 0.0;
         origin_.orientation.x = 0.0;
         origin_.orientation.y = 0.0;
@@ -1155,8 +1155,8 @@ private:
 
         for (const auto & pos : positions_prob_) 
         {
-            int ix = static_cast<int>((std::get<0>(pos) - origin_.position.x) / resolution_);
-            int iy = static_cast<int>((std::get<1>(pos) - origin_.position.y) / resolution_);
+            int ix = static_cast<int>((std::get<0>(pos) - origin_.position.x) / (resolution_));
+            int iy = static_cast<int>((std::get<1>(pos) - origin_.position.y) / (resolution_));
             
             if (ix >= 0 && ix < static_cast<int>(width_) && iy >= 0 && iy < static_cast<int>(height_)) 
             {
@@ -1179,7 +1179,7 @@ private:
     {
         pose_x_ = msg->pose.pose.position.x;
         pose_y_ = msg->pose.pose.position.y;
-        pose_z_ = msg->pose.pose.position.z;
+        pose_z_ = 0.0;
     }
 
 
@@ -1189,7 +1189,10 @@ private:
       
         auto new_distanceToObstacle = static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
-
+        auto new_minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
+        auto new_maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
+        
+        
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
             distanceToObstacle_ = new_distanceToObstacle;
@@ -1206,6 +1209,24 @@ private:
             RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
         }
 
+        if(new_minimumHeight != minimumHeight)
+        {
+            minimumHeight = new_minimumHeight;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "minimumHeight set to: %f", minimumHeight);
+        }
+       
+        if(new_maximumHeight != maximumHeight)
+        {
+            maximumHeight = new_maximumHeight;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "maximumHeight set to: %f", maximumHeight);
+        }
+        
     }
     
    
@@ -1215,12 +1236,21 @@ public:
     {
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
+        this->declare_parameter<double>("minimumHeight", 0.01);
+        this->declare_parameter<double>("maximumHeight", 0.4);
+
+
 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
+        minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
+        maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
+
 
         RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
+        RCLCPP_INFO(this->get_logger(), "minimumHeight is set to: %f", minimumHeight);
+        RCLCPP_INFO(this->get_logger(), "maximumHeight is set to: %f", maximumHeight);
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
@@ -1249,7 +1279,7 @@ public:
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
             "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));
 
-        resolution_ = 0.051;  // metros por célula
+        resolution_ = distanceToObstacle_;  // metros por célula
         width_ = 1000;        // número de células em x
         height_ = 1000;
     
