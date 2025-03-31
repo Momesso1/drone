@@ -1724,9 +1724,6 @@ private:
             RCLCPP_INFO(this->get_logger(), "diagonalEdges set to: %d", diagonalEdges_);
         }
        
-
-
-      
     }
 
     
@@ -1765,8 +1762,6 @@ public:
     PlotBidirectionalAStar() 
     : rclcpp::Node("bidirectional_a_star")
     {
-    
-     
         this->declare_parameter<double>("distanceToObstacle", 0.2);
         this->declare_parameter<int>("diagonalEdges", 3);
 
