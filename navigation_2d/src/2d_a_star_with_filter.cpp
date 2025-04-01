@@ -178,6 +178,7 @@ private:
     float resolution_;
     unsigned int width_;
     unsigned int height_;
+    bool visualOdometry;
 
     int decimals = 0;
 
@@ -1148,7 +1149,29 @@ private:
             float y = *iter_y;
             float z = *iter_z;
 
-            if(z > minimumHeight && z <= maximumHeight)
+            if(visualOdometry == true)
+            {
+                if(z > minimumHeight && z <= maximumHeight)
+                {
+                    z = 0;
+
+                    auto index = std::make_tuple(
+                        roundToMultiple(x, distanceToObstacle_, decimals),
+                        roundToMultiple(y, distanceToObstacle_, decimals),
+                        roundToMultiple(z, distanceToObstacle_, decimals)
+                    );
+
+                    auto index2 = std::make_tuple(
+                        roundToMultiple(x, distanceToObstacle_, decimals),
+                        roundToMultiple(y, distanceToObstacle_, decimals),
+                        1.0
+                    );
+
+                    positions_prob_.insert(index2);
+                    obstaclesVertices.insert(index);
+                }
+            }
+            else
             {
                 z = 0;
 
@@ -1157,17 +1180,16 @@ private:
                     roundToMultiple(y, distanceToObstacle_, decimals),
                     roundToMultiple(z, distanceToObstacle_, decimals)
                 );
-
+    
                 auto index2 = std::make_tuple(
                     roundToMultiple(x, distanceToObstacle_, decimals),
                     roundToMultiple(y, distanceToObstacle_, decimals),
                     1.0
                 );
-
+    
                 positions_prob_.insert(index2);
                 obstaclesVertices.insert(index);
             }
-
           
         }
        
@@ -1194,7 +1216,8 @@ private:
         auto new_diagonalEdges = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         auto new_minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
         auto new_maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
-        
+        auto new_visualOdometry = this->get_parameter("visualOdometry").get_parameter_value().get<bool>();
+
         
         if (new_distanceToObstacle != distanceToObstacle_) 
         {
@@ -1229,6 +1252,15 @@ private:
 
             RCLCPP_INFO(this->get_logger(), "maximumHeight set to: %f", maximumHeight);
         }
+
+        if(new_visualOdometry != visualOdometry)
+        {
+            visualOdometry = new_visualOdometry;
+
+            std::cout << "\n" << std::endl;
+
+            RCLCPP_INFO(this->get_logger(), "visualOdometry set to: %s", visualOdometry ? "true" : "false");
+        }
         
     }
     
@@ -1241,19 +1273,22 @@ public:
         this->declare_parameter<int>("diagonalEdges", 3);
         this->declare_parameter<double>("minimumHeight", 0.01);
         this->declare_parameter<double>("maximumHeight", 0.4);
-
+        this->declare_parameter<bool>("visualOdometry", false);
 
 
         distanceToObstacle_ =  static_cast<float>(this->get_parameter("distanceToObstacle").get_parameter_value().get<double>());
         diagonalEdges_ = this->get_parameter("diagonalEdges").get_parameter_value().get<int>();
         minimumHeight = static_cast<float>(this->get_parameter("minimumHeight").get_parameter_value().get<double>());
         maximumHeight = static_cast<float>(this->get_parameter("maximumHeight").get_parameter_value().get<double>());
+        maximumHeight = static_cast<float>(this->get_parameter("visualOdometry").get_parameter_value().get<bool>());
 
 
         RCLCPP_INFO(this->get_logger(), "distanceToObstacle is set to: %f", distanceToObstacle_);
         RCLCPP_INFO(this->get_logger(), "diagonalEdges is set to: %d", diagonalEdges_);
         RCLCPP_INFO(this->get_logger(), "minimumHeight is set to: %f", minimumHeight);
         RCLCPP_INFO(this->get_logger(), "maximumHeight is set to: %f", maximumHeight);
+        RCLCPP_INFO(this->get_logger(), "visualOdometry set to: %s", visualOdometry ? "true" : "false");
+
 
         parameterTimer = this->create_wall_timer(
             std::chrono::seconds(2),
@@ -1277,7 +1312,7 @@ public:
         
 
         subscription_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/rtabmap/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
+            "/odom", 10, std::bind(&AStar::callback_odom, this, std::placeholders::_1));
 
         subscription3_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
             "/destinations", 10, std::bind(&AStar::callback_destinations, this, std::placeholders::_1));

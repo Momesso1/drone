@@ -23,6 +23,11 @@ find_package(yaml-cpp REQUIRED)
 find_package(yolo_msgs REQUIRED)
 find_library(XXHASH_LIBRARY xxhash REQUIRED)
 
+add_executable(controller src/controller.cpp)
+ament_target_dependencies(controller rclcpp nav_msgs geometry_msgs tf2_geometry_msgs)
+
+add_executable(create_graph src/create_graph.cpp)
+ament_target_dependencies(create_graph rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
 add_executable(2d_a_star_with_filter src/2d_a_star_with_filter.cpp)
 ament_target_dependencies(2d_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
@@ -30,6 +35,21 @@ ament_target_dependencies(2d_a_star_with_filter rclcpp nav_msgs geometry_msgs PC
 add_executable(2d_bidirectional_a_star_with_filter src/2d_bidirectional_a_star_with_filter.cpp)
 ament_target_dependencies(2d_bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
 
+
+target_link_libraries(controller
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${tf2_geometry_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+target_link_libraries(create_graph
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
 
 target_link_libraries(2d_a_star_with_filter
   ${rclcpp_LIBRARIES}
@@ -54,6 +74,8 @@ DESTINATION share/${PROJECT_NAME}
 
 
 install(TARGETS
+  controller
+  create_graph
   2d_a_star_with_filter
   2d_bidirectional_a_star_with_filter
   DESTINATION lib/${PROJECT_NAME}

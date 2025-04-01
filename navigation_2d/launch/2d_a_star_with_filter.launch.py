@@ -16,6 +16,7 @@ def generate_launch_description():
         "maxSecurityDistance": 0.15,
         "maximumHeight": 0.2,
         "minimumHeight": 0.06,
+        'visualOdometry': False
     }]
 
   
@@ -42,7 +43,7 @@ def generate_launch_description():
         ),
 
         Node(
-            package='algorithms',
+            package='navigation_2d',
             executable='create_graph',
             output='screen',
             parameters=parameters,

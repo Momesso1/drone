@@ -1929,20 +1929,27 @@ private:
             float x = *iter_x;
             float y = *iter_y;
             float z = *iter_z;
-            auto index = std::make_tuple(
-                roundToMultiple(x, distanceToObstacle_, decimals),
-                roundToMultiple(y, distanceToObstacle_, decimals),
-                roundToMultiple(z, distanceToObstacle_, decimals)
-            );
+
+         
             
             {
                 std::lock_guard<std::mutex> lock(path_data_mutex);
-                     
-                if(obstaclesVertices.find(index) == obstaclesVertices.end())
+                if(z > minimumHeight && z <= maximumHeight)
                 {
-                    obstaclesVertices.insert(index);
+                    z = 0;
+    
+                    auto index = std::make_tuple(
+                        roundToMultiple(x, distanceToObstacle_, decimals),
+                        roundToMultiple(y, distanceToObstacle_, decimals),
+                        roundToMultiple(z, distanceToObstacle_, decimals)
+                    );
+                    if(obstaclesVertices.find(index) == obstaclesVertices.end())
+                    {
+                        obstaclesVertices.insert(index);
+                    }
+                
                 }
-            
+               
    
             }
 
