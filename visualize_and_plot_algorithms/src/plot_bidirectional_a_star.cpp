@@ -169,7 +169,6 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr subscription_;
 
     //Timers.
-    rclcpp::TimerBase::SharedPtr timer_navegable_vertices_;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr timer_path_;
     rclcpp::TimerBase::SharedPtr timer_visualize_path_;

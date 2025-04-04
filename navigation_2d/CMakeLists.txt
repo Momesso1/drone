@@ -22,7 +22,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(yolo_msgs REQUIRED)
 find_library(XXHASH_LIBRARY xxhash REQUIRED)
-
+find_package(visualization_msgs REQUIRED) 
 add_executable(controller src/controller.cpp)
 ament_target_dependencies(controller rclcpp nav_msgs geometry_msgs tf2_geometry_msgs)
 
@@ -34,6 +34,9 @@ ament_target_dependencies(2d_a_star_with_filter rclcpp nav_msgs geometry_msgs PC
 
 add_executable(2d_bidirectional_a_star_with_filter src/2d_bidirectional_a_star_with_filter.cpp)
 ament_target_dependencies(2d_bidirectional_a_star_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs )
+
+add_executable(rrt_with_filter src/rrt_with_filter.cpp)
+ament_target_dependencies(rrt_with_filter rclcpp nav_msgs geometry_msgs PCL pcl_conversions sensor_msgs visualization_msgs)
 
 
 target_link_libraries(controller
@@ -65,6 +68,14 @@ target_link_libraries(2d_bidirectional_a_star_with_filter
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(rrt_with_filter
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${GLEW_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+
 
 install(
   DIRECTORY
@@ -78,6 +89,7 @@ install(TARGETS
   create_graph
   2d_a_star_with_filter
   2d_bidirectional_a_star_with_filter
+  rrt_with_filter
   DESTINATION lib/${PROJECT_NAME}
 )
 
