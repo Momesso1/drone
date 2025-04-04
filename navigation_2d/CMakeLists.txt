@@ -78,7 +78,9 @@ target_link_libraries(rrt_with_filter
 
 
 install(
+ 
   DIRECTORY
+  rviz
   launch
 DESTINATION share/${PROJECT_NAME}
 )

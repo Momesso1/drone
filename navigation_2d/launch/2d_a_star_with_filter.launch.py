@@ -20,7 +20,7 @@ def generate_launch_description():
     }]
 
   
-    rviz_config_file = os.path.join(get_package_share_directory('algorithms'), 'rviz', 'default.rviz')
+    rviz_config_file = os.path.join(get_package_share_directory('navigation_2d'), 'rviz', 'default.rviz')
 
       
     return LaunchDescription([
